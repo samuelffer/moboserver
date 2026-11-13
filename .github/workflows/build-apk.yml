@@ -265,8 +265,9 @@ jobs:
           # sem bump de versao deixa o hash documentado errado.
           SHA="$(sha256sum "${{ steps.package.outputs.zip }}" | cut -d' ' -f1)"
           if grep -q "releases_apk/${{ steps.package.outputs.name }}.zip" README.md; then
-            sed -i -E "s#(releases_apk/${{ steps.package.outputs.name }}\.zip\`]\\(releases_apk/${{ steps.package.outputs.name }}\.zip\\)[^|]*\| )\`[0-9a-f]{64}\`#\1\`${SHA}\`#" README.md
+            sed -i -E "/releases_apk\/${{ steps.package.outputs.name }}\.zip/ s/\`[0-9a-f]{64}\`/\`${SHA}\`/" README.md
             echo "sha256 do README: $SHA"
+            grep -n "releases_apk/${{ steps.package.outputs.name }}.zip" README.md | head -2
           fi
           git add -f README.md || true
           git add -f dist/LEIA-ME.txt || true
