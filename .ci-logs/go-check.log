@@ -1,5 +1,7 @@
-# github.com/samuelffer/moboserver/server
-# [github.com/samuelffer/moboserver/server]
-vet: ./icenet.go:203:9: cannot use 1st function result (value of type *net.TCPListener) as transport.TCPListener value in return statement: *net.TCPListener does not implement transport.TCPListener (wrong type for method AcceptTCP)
-		have AcceptTCP() (*net.TCPConn, error)
-		want AcceptTCP() (transport.TCPConn, error)
+--- FAIL: TestICEAgentGathersFromInjectedInterfaces (0.00s)
+    icenet_test.go:119: a coleta usou "" em vez da lista injetada
+FAIL
+FAIL	github.com/samuelffer/moboserver/server	0.064s
+?   	github.com/samuelffer/moboserver/server/cmd/relay	[no test files]
+ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.234s
+FAIL
