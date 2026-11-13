@@ -236,9 +236,14 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	// do Dragonfly nao conhece e o mundo deixa de abrir. As tags sao recortadas
 	// sem perder o conteudo, o level.dat original fica ao lado
 	// (level.dat.original) e elas voltam ao arquivo quando o mundo e salvo.
-	levelFix, fixErr := prepareLevelDat(filepath.Join(opts.World, "level.dat"))
-	if fixErr != nil {
-		return fixErr
+	levelDatPath := filepath.Join(opts.World, "level.dat")
+	var levelFix *levelDatFix
+	if _, statErr := os.Stat(levelDatPath); statErr == nil {
+		var fixErr error
+		levelFix, fixErr = prepareLevelDat(levelDatPath)
+		if fixErr != nil {
+			return fixErr
+		}
 	}
 	if levelFix != nil {
 		emitLog("warn", fmt.Sprintf("level.dat tem metadados que o motor não lê (%s). "+
