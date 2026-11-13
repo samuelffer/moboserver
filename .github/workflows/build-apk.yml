@@ -78,13 +78,7 @@ jobs:
             echo "Data: $(date -u +%FT%TZ)"
             echo
             grep -E "^ok |selftest:|SELFTEST OK|Listener |Sinalizacao NetherNet|ICE (ok|falhou)|Interfaces repassadas|--- (PASS|FAIL)" /tmp/go-check.log 2>/dev/null || true
-            echo
-            echo "== Testes de JVM do app (selecao de mundo / mesclagem de configuracao) =="
-            for xml in android/app/build/test-results/testReleaseUnitTest/*.xml; do
-              [ -f "$xml" ] || continue
-              sed -nE 's/.*<testsuite name="([^"]+)" tests="([0-9]+)" skipped="([0-9]+)" failures="([0-9]+)" errors="([0-9]+)".*/\1: \2 teste(s), \4 falha(s), \5 erro(s)/p' "$xml"
-              grep -oE 'testcase name="[^"]+"' "$xml" | sed -E 's/testcase name="([^"]+)"/  - \1/' || true
-            done
+
           } > docs/test-evidence.txt
           cat docs/test-evidence.txt
 
@@ -208,7 +202,15 @@ jobs:
         run: |
           set -o pipefail
           gradle --no-daemon testReleaseUnitTest 2>&1 | tee /tmp/gradle-unit.log
-          grep -h "tests=" app/build/test-results/testReleaseUnitTest/*.xml | sed -E 's/.*(tests="[0-9]+" skipped="[0-9]+" failures="[0-9]+" errors="[0-9]+").*/\1/' || true
+          {
+            echo
+            echo "== Testes de JVM do app (selecao de mundo / mesclagem de configuracao) =="
+            for xml in app/build/test-results/testReleaseUnitTest/*.xml; do
+              [ -f "$xml" ] || continue
+              sed -nE 's/.*<testsuite name="([^"]+)" tests="([0-9]+)" skipped="([0-9]+)" failures="([0-9]+)" errors="([0-9]+)".*/\1: \2 teste(s), \4 falha(s), \5 erro(s)/p' "$xml"
+              grep -oE 'testcase name="[^"]+"' "$xml" | sed -E 's/testcase name="([^"]+)"/  - \1/' || true
+            done
+          } | tee -a ../docs/test-evidence.txt
 
       - name: Compilar APK release
         working-directory: android
