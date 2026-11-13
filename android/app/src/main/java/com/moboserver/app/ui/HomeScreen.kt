@@ -540,6 +540,21 @@ private fun ExposureCard(
             },
         )
 
+        val tunnelState = exposure.tunnelState
+        if (tunnelState != null) {
+            InfoLine(
+                label = "Túnel",
+                value = when (tunnelState) {
+                    "connected" -> exposure.tunnelAddress ?: "conectado"
+                    "connecting" -> "conectando..."
+                    "reconnecting" -> "reconectando..."
+                    else -> tunnelState
+                },
+                mono = tunnelState == "connected",
+                valueColor = if (tunnelState == "connected") MoboColors.Lime else MoboColors.TextSecondary,
+            )
+        }
+
         exposure.upnpMessage?.let { message ->
             Spacer(Modifier.height(4.dp))
             Text(message, color = MoboColors.TextSecondary, fontSize = 12.sp)
@@ -616,6 +631,19 @@ private fun ExposureCard(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text("Trabalhando...", color = MoboColors.TextSecondary, fontSize = 12.sp)
+            }
+        }
+        val tunnel = exposure.tunnelAddress
+        if (exposure.tunnelState == "connected" && tunnel != null) {
+            TextButton(onClick = { onCopy(tunnel) }) {
+                Icon(
+                    Icons.Filled.ContentCopy,
+                    contentDescription = null,
+                    tint = MoboColors.Lime,
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("Copiar endereço do túnel", color = MoboColors.Lime, fontSize = 12.sp)
             }
         }
         val public = exposure.publicIp

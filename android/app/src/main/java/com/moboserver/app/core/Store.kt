@@ -20,6 +20,12 @@ data class ServerConfig(
     val generator: String = "terrain",
     val autoForward: Boolean = true,
     val activeWorldId: String = "",
+    /** Relay "host:porta" do túnel UDP. Vazio = túnel desligado. */
+    val relayAddr: String = "",
+    /** Token aceito pelo relay. */
+    val relayToken: String = "",
+    /** Usa TLS na conexão de controle do túnel. */
+    val relayTls: Boolean = true,
 )
 
 /** Tiny key/value store shared by the UI, the service and the controller. */
@@ -60,6 +66,9 @@ object Store {
         put("generator", c.generator)
         put("autoForward", c.autoForward)
         put("activeWorldId", c.activeWorldId)
+        put("relayAddr", c.relayAddr)
+        put("relayToken", c.relayToken)
+        put("relayTls", c.relayTls)
     }.toString()
 
     private fun decode(raw: String?): ServerConfig {
@@ -80,6 +89,9 @@ object Store {
                 generator = o.optString("generator", defaults.generator),
                 autoForward = o.optBoolean("autoForward", defaults.autoForward),
                 activeWorldId = o.optString("activeWorldId", defaults.activeWorldId),
+                relayAddr = o.optString("relayAddr", defaults.relayAddr).trim(),
+                relayToken = o.optString("relayToken", defaults.relayToken).trim(),
+                relayTls = o.optBoolean("relayTls", defaults.relayTls),
             )
         } catch (e: Exception) {
             defaults

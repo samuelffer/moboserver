@@ -51,6 +51,16 @@ aparece na aba "LAN"/"Mundos", ou seja, com o console na MESMA rede Wi-Fi do
 celular. O MoboServer se anuncia sozinho nessa aba: ligue o servidor e abra o
 Minecraft no console.
 
+Acesso pela internet sem mexer no roteador
+------------------------------------------
+O app tem um tunel UDP opcional. Ele precisa de um "relay" rodando em um
+servidor publico (veja relay/README.md no projeto). Tudo o que voce configura no
+celular e o endereco do relay e o token, em Ajustes. Com o tunel conectado, a
+tela inicial mostra o endereco publico para enviar aos amigos, e ele funciona de
+qualquer rede - inclusive quando o celular esta atras de CGNAT, porque quem
+inicia a conexao e o celular. Sem relay, LAN e redirecionamento de porta
+continuam funcionando normalmente.
+
 Se ninguem conseguir entrar
 ----------------------------
 1. Ligue o servidor e olhe o cartao "Acesso pela internet".

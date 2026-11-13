@@ -230,6 +230,46 @@ fun SettingsScreen() {
         }
 
         Spacer(Modifier.height(12.dp))
+        MoboCard {
+            SectionTitle("Acesso sem mexer no roteador (túnel)")
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Opcional. Com um relay do MoboServer rodando em um servidor público, o celular " +
+                    "abre uma conexão de saída e recebe jogadores de qualquer rede, inclusive atrás " +
+                    "de CGNAT. O endereço público aparece na tela inicial quando o túnel conecta.",
+                color = MoboColors.TextSecondary,
+                fontSize = 12.sp,
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = draft.relayAddr,
+                onValueChange = { draft = draft.copy(relayAddr = it.trim().take(80)) },
+                label = { Text("Relay (host:porta)") },
+                placeholder = { Text("relay.exemplo.com:9000") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                supportingText = { Text("Vazio = túnel desligado (só LAN e port forwarding)", fontSize = 11.sp) },
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = draft.relayToken,
+                onValueChange = { draft = draft.copy(relayToken = it.trim().take(80)) },
+                label = { Text("Token do relay") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+            )
+            Spacer(Modifier.height(6.dp))
+            SwitchRow(
+                title = "Usar TLS no túnel",
+                description = "Recomendado com domínio e certificado válidos no relay.",
+                checked = draft.relayTls,
+                onChange = { draft = draft.copy(relayTls = it) },
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
         BannedPlayersCard(runtimeStatus = runtime.status)
 
         Spacer(Modifier.height(12.dp))

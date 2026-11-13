@@ -33,7 +33,7 @@ processo nativo do próprio app:
 * **Segundo plano**: serviço em primeiro plano + wake lock + Wi-Fi lock, com notificação
   permanente mostrando jogadores e porta.
 
-## Recursos da versão 1.0.8
+## Recursos da versão 1.1.0
 
 | Recurso | Detalhe |
 | --- | --- |
@@ -83,6 +83,25 @@ sha256sum MoboServer-v1.0.8-android-arm64.zip
 
 O servidor é Bedrock puro: **não** aceita Minecraft Java (PC Java), a não ser através de
 tradutores como o Geyser, que não vêm incluídos.
+
+## Acesso pela internet sem tocar no roteador (túnel)
+
+O app traz um **túnel UDP reverso** opcional: o celular abre uma conexão de saída
+para um *relay* e recebe uma porta pública. Quem joga conecta nessa porta, de
+qualquer rede, inclusive quando o celular está atrás de CGNAT — porque quem
+inicia a conexão é o celular.
+
+* **O que você precisa:** um relay rodando em uma VPS (componentes e passo a
+  passo em [`relay/README.md`](relay/README.md)). Sem relay, nada muda: LAN e
+  port forwarding continuam funcionando.
+* **No app:** Ajustes → *Acesso sem mexer no roteador* → endereço do relay e
+  token. Ao ligar o servidor, a tela inicial mostra o endereço público assim que
+  a sessão é estabelecida.
+* **Custo:** apenas a VPS e o tráfego dela.
+
+O cliente do túnel é compilado **dentro** do mesmo binário do servidor: não há
+segundo executável para o Android carregar (foi exatamente esse caminho que
+quebrou as versões 1.0.2–1.0.4).
 
 ## Ninguém consegue entrar? Faça o teste em 30 segundos
 
@@ -197,6 +216,28 @@ validação final é a primeira execução no seu celular. Se algo falhar, o con
 a mensagem de erro do servidor.
 
 ## Changelog
+
+### 1.1.0
+
+* **Descoberta LAN corrigida de verdade**: o anúncio Java em `224.0.2.60:4445`
+  (com payload `[MCPE;...]`) foi **removido** — ele existe para o Java Edition e
+  o Bedrock ignora. O Bedrock descobre servidores pelo *Unconnected Ping* que o
+  próprio listener RakNet responde na porta do jogo, sem socket extra.
+* **Diagnóstico de conexão**: cada tentativa de login agora aparece no console
+  com IP de origem, versão e plataforma do cliente; os erros de rede do RakNet
+  (com endereço remoto) também são encaminhados.
+* **Selftest** valida o payload do pong campo a campo (MCPE, nome, protocolo,
+  versão e porta anunciada), roda na porta padrão e em porta personalizada e
+  cobre o túnel fim a fim.
+* **Ciclo de vida**: sessões isoladas (evento atrasado de uma execução antiga não
+  altera a atual), parar durante a preparação cancela o start, `Stopped`/`Exited`
+  não se atropelam e o serviço revalida o encerramento antes de soltar locks.
+* **Túnel UDP reverso** (`relay/`): relay próprio, sem conta e sem binário extra
+  no APK, com testes automatizados de encaminhamento UDP e de token inválido.
+* **Tela inicial** mais simples e honesta: estado, mundo, IP e porta em campos
+  separados com cópia individual, versão+protocolo reais e área de internet com
+  endereço do roteador (UPnP) e endereço observado (STUN) **separados**, sem
+  afirmar acesso externo a partir do sucesso do UPnP.
 
 ### 1.0.8
 

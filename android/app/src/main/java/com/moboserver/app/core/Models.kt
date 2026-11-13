@@ -50,6 +50,10 @@ data class Exposure(
     val externalCheck: String? = null,
     /** null = never checked, true = reached from outside, false = not reached. */
     val externalVerified: Boolean? = null,
+    /** Tunnel state reported by the server: connecting, connected, reconnecting. */
+    val tunnelState: String? = null,
+    /** "host:porta" handed out by the relay, when connected. */
+    val tunnelAddress: String? = null,
 )
 
 /** Everything the UI renders, published by [ServerController]. */

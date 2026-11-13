@@ -467,6 +467,20 @@ object ServerController {
                 }
             }
 
+            is ServerEvent.Tunnel -> {
+                _state.update { st ->
+                    st.copy(
+                        exposure = st.exposure.copy(
+                            tunnelState = event.state,
+                            tunnelAddress = event.address.ifBlank { st.exposure.tunnelAddress },
+                        ),
+                    )
+                }
+                if (event.state == "connected") {
+                    appendLog("info", "Túnel conectado: ${event.address}:${event.port}")
+                }
+            }
+
             is ServerEvent.Join -> {
                 val players = _state.value.players.toMutableList()
                 if (players.none { it.name.equals(event.player.name, ignoreCase = true) }) {
@@ -624,7 +638,18 @@ object ServerController {
         "-view", config.viewDistance.toString(),
         "-gen", config.generator,
         "-dns", dnsServers(context),
-    )
+    ) + tunnelArgs(config)
+
+    /** Extra flags for the optional reverse tunnel (empty when not configured). */
+    private fun tunnelArgs(config: ServerConfig): List<String> {
+        val relay = config.relayAddr.trim()
+        if (relay.isBlank()) return emptyList()
+        return listOf(
+            "-tunnel", relay,
+            "-tunnel-token", config.relayToken.trim(),
+            "-tunnel-tls=${config.relayTls}",
+        )
+    }
 
     /**
      * Keeps the Go runtime friendly to a phone: a memory cap derived from the

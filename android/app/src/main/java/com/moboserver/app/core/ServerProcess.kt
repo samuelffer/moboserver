@@ -23,6 +23,7 @@ sealed class ServerEvent {
     ) : ServerEvent()
     data class Log(val level: String, val message: String) : ServerEvent()
     data class Lan(val targets: List<LanTarget>) : ServerEvent()
+    data class Tunnel(val state: String, val detail: String, val address: String, val port: Int) : ServerEvent()
     data class Join(val player: PlayerInfo) : ServerEvent()
     data class Quit(val name: String) : ServerEvent()
     data class Players(val players: List<PlayerInfo>) : ServerEvent()
@@ -138,6 +139,14 @@ class ServerProcess(
                 }
                 listener(ServerEvent.Lan(targets))
             }
+            "tunnel" -> listener(
+                ServerEvent.Tunnel(
+                    state = obj.optString("state"),
+                    detail = obj.optString("detail"),
+                    address = obj.optString("address"),
+                    port = obj.optInt("port"),
+                ),
+            )
             "join" -> listener(
                 ServerEvent.Join(
                     PlayerInfo(
