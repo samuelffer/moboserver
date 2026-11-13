@@ -24,7 +24,7 @@ import (
 
 // appVersion is the version of the embedded server, kept in sync with the
 // Android app version by the build workflow.
-const appVersion = "1.1.0"
+const appVersion = "1.2.0"
 
 // options holds every command line flag the Android app passes to the server
 // process. Everything is explicit: the process never reads a config file, so
@@ -46,6 +46,9 @@ type options struct {
 	Tunnel       string
 	TunnelToken  string
 	TunnelTLS    bool
+	AllowOpen      bool
+	NetherNet      bool
+	NetherNetPorts string
 	Selftest     bool
 	SelftestTunnel bool
 	ShowVersion  bool
@@ -71,6 +74,12 @@ func parseFlags() options {
 	flag.IntVar(&o.ViewDistance, "view", 8, "maximum chunk radius (view distance) for players")
 	flag.StringVar(&o.Gen, "gen", "terrain", "world generator for new chunks: terrain or flat")
 	flag.StringVar(&o.DNS, "dns", "", "DNS servers for this network, comma separated (Android has no resolv.conf)")
+	flag.BoolVar(&o.AllowOpen, "allow-open", false,
+		"start without Xbox authentication when the login service is unreachable")
+	flag.BoolVar(&o.NetherNet, "nethernet", true,
+		"also listen on the NetherNet transport (clients joining by address probe it first)")
+	flag.StringVar(&o.NetherNetPorts, "nethernet-ports", "19133-19140",
+		"UDP ports used by NetherNet player connections")
 	flag.StringVar(&o.Tunnel, "tunnel", "", "relay host:port of the reverse UDP tunnel (empty disables it)")
 	flag.StringVar(&o.TunnelToken, "tunnel-token", "", "token accepted by the tunnel relay")
 	flag.BoolVar(&o.TunnelTLS, "tunnel-tls", true, "use TLS for the tunnel control connection")
@@ -120,6 +129,7 @@ func dragonflyVersion() string { return "0.11.6" }
 // cancelled. It returns only after the world has been saved and closed.
 func runServer(ctx context.Context, opts options, log *slog.Logger, stop context.CancelFunc) error {
 	setupResolver(strings.Split(opts.DNS, ","))
+	setupTrustStore()
 
 	for _, dir := range []string{opts.DataDir, opts.PlayersDir, opts.World} {
 		if dir == "" {
@@ -153,7 +163,20 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 
 	uc := server.DefaultConfig()
 	uc.Network.Address = fmt.Sprintf("0.0.0.0:%d", opts.Port)
-	uc.Network.Transport = []string{"raknet"}
+	// RakNet (UDP) e o transporte historico. Clientes atuais que entram por
+	// endereco sondam antes o endpoint NetherNet: HTTPS em /v1/join na porta do
+	// jogo (e em 443/80 quando a porta e 19132) e so depois caem para o RakNet.
+	// Se ninguem responde, a sondagem demora e o cliente fica em "localizando
+	// servidor"; por isso o NetherNet tambem e servido, na mesma porta do jogo.
+	if opts.NetherNet {
+		uc.Network.Transport = []string{"raknet", "nethernet"}
+		uc.Network.NetherNet.Address = fmt.Sprintf("0.0.0.0:%d", opts.Port)
+		uc.Network.NetherNet.KeyFile = filepath.Join(opts.DataDir, "keys", "server_identity_key.pem")
+		uc.Network.NetherNet.Domain = "self"
+		uc.Network.NetherNet.UDPPorts = opts.NetherNetPorts
+	} else {
+		uc.Network.Transport = []string{"raknet"}
+	}
 	uc.Server.Name = opts.Name
 	uc.Server.AuthEnabled = opts.Auth
 	uc.World.SaveData = true
@@ -171,10 +194,19 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 		return fmt.Errorf("não foi possível abrir o mundo (arquivo incompatível ou corrompido): %w", err)
 	}
 	conf.AuthDisabled = !opts.Auth
-	if opts.Auth && !xboxAuthReachable(ctx, protocol.CurrentVersion) {
-		emitLog("warn", "Sem acesso ao serviço de login do Xbox Live: o servidor vai abrir SEM verificação de conta. "+
-			"Quem tiver o endereço e a porta consegue entrar (bom para jogar com amigos).")
-		conf.AuthDisabled = true
+	if opts.Auth {
+		if err := xboxAuthReachable(ctx, protocol.CurrentVersion); err != nil {
+			if !opts.AllowOpen {
+				return fmt.Errorf("não foi possível validar o login do Xbox Live: %w. "+
+					"Confira a internet do celular; para jogar sem verificação de conta, ligue "+
+					"\"Modo aberto\" em Ajustes (não é o padrão)", err)
+			}
+			emitLog("warn", "Login do Xbox Live indisponível ("+err.Error()+"): seguindo em MODO ABERTO, "+
+				"como configurado em Ajustes.")
+			conf.AuthDisabled = true
+		} else {
+			emitLog("info", "Login do Xbox Live acessível: contas da Microsoft serão verificadas.")
+		}
 	}
 	conf.Allower = &banAllower{bans: bans}
 	conf.Generator = generatorFor(opts.Gen)
@@ -224,9 +256,29 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	// server is online. If Dragonfly could not create its listener (usually
 	// because the phone has no internet for the Xbox Live verification) this
 	// fails with an actionable message instead of a silent dead server.
-	if err := waitForListener(opts.Port, 12*time.Second); err != nil {
+	// Cada transporte e verificado separadamente: abrir a porta, receber
+	// sinalizacao, estabelecer conexao e concluir o login sao etapas distintas e
+	// o console mostra qual delas falhou.
+	raknetErr := waitForListener(opts.Port, 12*time.Second)
+	if raknetErr == nil {
+		emitLog("info", fmt.Sprintf("Listener RakNet ativo: UDP :%d (descoberta e jogo)", opts.Port))
+	} else {
+		emitLog("error", "Listener RakNet falhou: "+raknetErr.Error())
+	}
+	var netherErr error
+	if opts.NetherNet {
+		netherErr = waitForSignaling(opts.Port, 10*time.Second)
+		if netherErr == nil {
+			emitLog("info", fmt.Sprintf("Listener NetherNet ativo: sinalizacao HTTP em TCP :%d, midia UDP %s",
+				opts.Port, opts.NetherNetPorts))
+		} else {
+			emitLog("warn", "Listener NetherNet indisponível: "+netherErr.Error()+
+				" (clientes que entram por endereco vao demorar mais para cair no RakNet)")
+		}
+	}
+	if raknetErr != nil && (netherErr != nil || !opts.NetherNet) {
 		_ = srv.Close()
-		return err
+		return fmt.Errorf("nenhum transporte abriu a porta: %v", raknetErr)
 	}
 
 	emit(map[string]any{
@@ -238,7 +290,8 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 		"max":      opts.MaxPlayers,
 		"gen":      opts.Gen,
 		"imported": imported,
-		"auth":     !conf.AuthDisabled,
+		"auth":      !conf.AuthDisabled,
+		"nethernet": opts.NetherNet && netherErr == nil,
 	})
 	emitLog("info", fmt.Sprintf("Servidor de Minecraft Bedrock %s (protocolo %d) escutando na porta UDP %d",
 		protocol.CurrentVersion, protocol.CurrentProtocol, opts.Port))
@@ -353,9 +406,8 @@ func waitForListener(port int, timeout time.Duration) error {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("o servidor não conseguiu abrir a porta UDP %d. "+
-				"Confira se o celular está conectado à internet (necessário para validar o login do Xbox) "+
-				"e se outra pessoa não está usando essa porta", port)
+			return fmt.Errorf("o listener RakNet não abriu a porta UDP %d: verifique se outra "+
+				"pessoa não está usando essa porta no aparelho", port)
 		}
 		time.Sleep(400 * time.Millisecond)
 	}

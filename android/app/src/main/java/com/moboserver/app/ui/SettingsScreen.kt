@@ -222,6 +222,13 @@ fun SettingsScreen() {
                 onChange = { draft = draft.copy(authEnabled = it) },
             )
             SwitchRow(
+                title = "Modo aberto se o login falhar",
+                description = "Padrão: o servidor NÃO sobe quando a verificação de conta da Microsoft " +
+                    "está inacessível. Ligue para permitir entrar sem conta nesse caso.",
+                checked = draft.allowOpenMode,
+                onChange = { draft = draft.copy(allowOpenMode = it) },
+            )
+            SwitchRow(
                 title = "Liberar porta automaticamente",
                 description = "Tenta abrir a porta no roteador via UPnP ao ligar o servidor.",
                 checked = draft.autoForward,

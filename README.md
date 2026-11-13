@@ -33,7 +33,7 @@ processo nativo do próprio app:
 * **Segundo plano**: serviço em primeiro plano + wake lock + Wi-Fi lock, com notificação
   permanente mostrando jogadores e porta.
 
-## Recursos da versão 1.1.0
+## Recursos da versão 1.2.0
 
 | Recurso | Detalhe |
 | --- | --- |
@@ -216,6 +216,25 @@ validação final é a primeira execução no seu celular. Se algo falhar, o con
 a mensagem de erro do servidor.
 
 ## Changelog
+
+### 1.2.0
+
+* **Transporte NetherNet habilitado** junto com o RakNet, na mesma porta do jogo
+  (TCP `19132` para sinalização HTTP `/v1/join`, UDP `19133-19140` para mídia).
+  Clientes atuais que entram **por endereço** sondam esse endpoint antes de cair
+  no RakNet; sem ele a sondagem demora e o jogo fica em "localizando servidor".
+* **Certificados de confiança do Android** carregados no processo Go
+  (`x509.SetFallbackRoots`): o binário `GOOS=linux` não encontrava
+  `/etc/ssl/certs` e todo HTTPS falhava com `certificate signed by unknown
+  authority`. A validação continua ativa.
+* **Sem modo aberto silencioso**: se o login do Xbox Live não puder ser
+  verificado, o servidor **não sobe** e informa o erro exato. Abrir sem conta
+  virou opção explícita em Ajustes ("Modo aberto se o login falhar").
+* **Verificação de inicialização por transporte**: RakNet (UDP) e NetherNet
+  (sinalização HTTP) são testados e registrados separadamente; se nenhum abrir a
+  porta, o app mostra erro em vez de "online".
+* `docs/diagnostico-pc.md`: teste de UDP pelo PowerShell que separa "servidor não
+  responde" de "rede não entrega o pacote", e como conferir a sinalização.
 
 ### 1.1.0
 

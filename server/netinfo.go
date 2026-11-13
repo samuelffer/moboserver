@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bufio"
+	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -63,4 +66,35 @@ func probeInterfaces(port int, targets []lanTarget) []lanTarget {
 		}
 	}
 	return targets
+}
+
+// waitForSignaling verifies that the NetherNet HTTP signaling endpoint answers on
+// the game port. Clients that join by address ask for /v1/join there (HTTPS
+// first, plaintext HTTP on the same port) before falling back to RakNet, so an
+// endpoint that silently drops packets is what makes the client sit on
+// "localizando servidor" for a long time.
+func waitForSignaling(port int, timeout time.Duration) error {
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+	deadline := time.Now().Add(timeout)
+	var lastErr error = fmt.Errorf("porta nao aceitou conexao")
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", addr, 1500*time.Millisecond)
+		if err != nil {
+			lastErr = err
+			time.Sleep(300 * time.Millisecond)
+			continue
+		}
+		_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+		request := "GET /v1/join HTTP/1.1\r\nHost: " + addr + "\r\nUser-Agent: MoboServer\r\nConnection: close\r\n\r\n"
+		_, _ = conn.Write([]byte(request))
+		reader := bufio.NewReader(conn)
+		line, readErr := reader.ReadString('\n')
+		_ = conn.Close()
+		if readErr == nil && strings.HasPrefix(line, "HTTP/") {
+			return nil
+		}
+		lastErr = fmt.Errorf("resposta inesperada em /v1/join: %q", strings.TrimSpace(line))
+		time.Sleep(300 * time.Millisecond)
+	}
+	return fmt.Errorf("sem sinalizacao em TCP %s: %w", addr, lastErr)
 }

@@ -26,6 +26,8 @@ data class ServerConfig(
     val relayToken: String = "",
     /** Usa TLS na conexão de controle do túnel. */
     val relayTls: Boolean = true,
+    /** Aceita subir sem verificação de conta quando o login Xbox falha. */
+    val allowOpenMode: Boolean = false,
 )
 
 /** Tiny key/value store shared by the UI, the service and the controller. */
@@ -69,6 +71,7 @@ object Store {
         put("relayAddr", c.relayAddr)
         put("relayToken", c.relayToken)
         put("relayTls", c.relayTls)
+        put("allowOpenMode", c.allowOpenMode)
     }.toString()
 
     private fun decode(raw: String?): ServerConfig {
@@ -92,6 +95,7 @@ object Store {
                 relayAddr = o.optString("relayAddr", defaults.relayAddr).trim(),
                 relayToken = o.optString("relayToken", defaults.relayToken).trim(),
                 relayTls = o.optBoolean("relayTls", defaults.relayTls),
+                allowOpenMode = o.optBoolean("allowOpenMode", defaults.allowOpenMode),
             )
         } catch (e: Exception) {
             defaults

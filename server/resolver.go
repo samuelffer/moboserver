@@ -58,28 +58,26 @@ func setupResolver(servers []string) {
 }
 
 // xboxAuthReachable testa se o serviço de descoberta da Microsoft responde.
-// Quando ele não responde (rede bloqueada, DNS quebrado, proxy), o Dragonfly
-// aborta a criação do listener; é melhor abrir o servidor sem verificação de
-// conta do que ficar inutilizável.
-func xboxAuthReachable(ctx context.Context, version string) bool {
+// Devolve o erro para que a falha apareça exatamente como aconteceu (DNS, TLS,
+// HTTP), em vez de um "sem internet" genérico.
+func xboxAuthReachable(ctx context.Context, version string) error {
 	url := fmt.Sprintf(
 		"https://client.discovery.minecraft-services.net/api/v1.0/discovery/MinecraftPE/builds/%s",
 		version,
 	)
-	client := &http.Client{Timeout: 8 * time.Second}
+	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return false
+		return err
 	}
+	req.Header.Set("User-Agent", "MoboServer/"+appVersion)
 	resp, err := client.Do(req)
 	if err != nil {
-		emitLog("warn", "Login do Xbox Live indisponível: "+err.Error())
-		return false
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 500 {
-		emitLog("warn", fmt.Sprintf("Login do Xbox Live respondeu HTTP %d", resp.StatusCode))
-		return false
+		return fmt.Errorf("o serviço respondeu HTTP %d", resp.StatusCode)
 	}
-	return true
+	return nil
 }

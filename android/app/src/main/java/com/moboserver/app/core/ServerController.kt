@@ -635,6 +635,7 @@ object ServerController {
         "-port", config.port.toString(),
         "-max", config.maxPlayers.toString(),
         "-auth=${config.authEnabled}",
+        "-allow-open=${config.allowOpenMode}",
         "-gamemode", config.gameMode,
         "-difficulty", config.difficulty,
         "-view", config.viewDistance.toString(),
