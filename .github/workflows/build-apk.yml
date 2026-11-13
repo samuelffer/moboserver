@@ -96,7 +96,18 @@ jobs:
 
       - name: Compilar APK release
         working-directory: android
-        run: gradle --no-daemon --stacktrace assembleRelease
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace assembleRelease 2>&1 | tee /tmp/gradle.log
+
+      - name: Diagnostico do build
+        if: failure()
+        run: |
+          if [ -f /tmp/gradle.log ]; then
+            echo "=== Inicio do erro (ultimas linhas relevantes) ==="
+            grep -nE "e: file|error:|FAILURE|What went wrong|Caused by|Execution failed|> Task .*FAILED" /tmp/gradle.log | head -40 || true
+            echo "=== Fim ==="
+          fi
 
       - name: Verificar APK
         run: |
