@@ -1,7 +1,44 @@
---- FAIL: TestAvatarFaceCrop (0.00s)
-    avatar_test.go:63: PNG não é RGBA: *image.NRGBA
-FAIL
-FAIL	github.com/samuelffer/moboserver/server	0.100s
+ok  	github.com/samuelffer/moboserver/server	0.165s
 ?   	github.com/samuelffer/moboserver/server/cmd/relay	[no test files]
-ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.235s
-FAIL
+ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.234s
+=== RUN   TestAvatarFaceCrop
+--- PASS: TestAvatarFaceCrop (0.00s)
+=== RUN   TestAvatarOuterLayerOverlay
+--- PASS: TestAvatarOuterLayerOverlay (0.00s)
+=== RUN   TestAvatarSemiTransparentOverlay
+--- PASS: TestAvatarSemiTransparentOverlay (0.00s)
+=== RUN   TestAvatarLegacyOpaqueHatIgnored
+--- PASS: TestAvatarLegacyOpaqueHatIgnored (0.00s)
+=== RUN   TestAvatarDoubledLayout
+--- PASS: TestAvatarDoubledLayout (0.00s)
+=== RUN   TestAvatarUnavailable
+--- PASS: TestAvatarUnavailable (0.00s)
+=== RUN   TestAvatarHashChangesWithSkin
+--- PASS: TestAvatarHashChangesWithSkin (0.00s)
+=== RUN   TestLevelDatAcceptsDottedTag
+--- PASS: TestLevelDatAcceptsDottedTag (0.00s)
+=== RUN   TestLevelDatAcceptsEditorTag
+--- PASS: TestLevelDatAcceptsEditorTag (0.00s)
+=== RUN   TestLevelDatWithoutExtraTagsNeedsNoFix
+--- PASS: TestLevelDatWithoutExtraTagsNeedsNoFix (0.00s)
+=== RUN   TestValidateWorldCodes
+=== RUN   TestValidateWorldCodes/arquivo_invalido
+=== RUN   TestValidateWorldCodes/level.dat_truncado
+=== RUN   TestValidateWorldCodes/importacao_incompleta
+=== RUN   TestValidateWorldCodes/db_vazio
+=== RUN   TestValidateWorldCodes/mundo_valido_com_tag_extra
+--- PASS: TestValidateWorldCodes (0.00s)
+    --- PASS: TestValidateWorldCodes/arquivo_invalido (0.00s)
+    --- PASS: TestValidateWorldCodes/level.dat_truncado (0.00s)
+    --- PASS: TestValidateWorldCodes/importacao_incompleta (0.00s)
+    --- PASS: TestValidateWorldCodes/db_vazio (0.00s)
+    --- PASS: TestValidateWorldCodes/mundo_valido_com_tag_extra (0.00s)
+=== RUN   TestNbtSkipRejectsTruncated
+--- PASS: TestNbtSkipRejectsTruncated (0.00s)
+PASS
+ok  	github.com/samuelffer/moboserver/server	0.088s
+mobosrv 1.3.0 dragonfly 0.11.6 bedrock 1.26.60 protocol 2225
+{"lvl":"warn","msg":"Não encontrei os certificados do Android: conexões HTTPS podem falhar (validação de certificado continua ativa).","t":"log"}
+{"lvl":"info","msg":"Nenhum mundo encontrado: um novo mundo sera gerado.","t":"log"}
+{"lvl":"info","msg":"Gerador selecionado: terreno natural","t":"log"}
+selftest: server did not start: o mundo não tem level.dat
