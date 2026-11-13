@@ -33,7 +33,7 @@ processo nativo do próprio app:
 * **Segundo plano**: serviço em primeiro plano + wake lock + Wi-Fi lock, com notificação
   permanente mostrando jogadores e porta.
 
-## Recursos da versão 1.0.1
+## Recursos da versão 1.0.2
 
 | Recurso | Detalhe |
 | --- | --- |
@@ -44,8 +44,9 @@ processo nativo do próprio app:
 | Jogadores | Lista em tempo real, expulsar e banir (persistente por XUID); desbanir em Ajustes |
 | Console | Log ao vivo, cópia do log, mensagem para todos no chat |
 | Internet | Descoberta de IP público (STUN), liberação automática de porta (UPnP) e teste de acesso externo |
-| Rede local | Endereço Wi-Fi mostrado na tela inicial |
+| Rede local | Endereço Wi-Fi na tela inicial e **anúncio automático na aba LAN** (PC, celular e console na mesma rede) |
 | Otimização | Limite de memória do runtime Go conforme o heap do app, 1 worker de chunk, view distance limitada |
+| Diagnóstico | Teste do binário embutido, estado do aparelho e relatório de falhas com copiar/compartilhar |
 
 ## Requisitos
 

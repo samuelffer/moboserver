@@ -42,11 +42,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.moboserver.app.core.Bans
+import com.moboserver.app.core.Diagnostics
 import com.moboserver.app.core.ServerConfig
 import com.moboserver.app.core.ServerController
 import com.moboserver.app.core.Store
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SettingsScreen() {
@@ -228,6 +231,9 @@ fun SettingsScreen() {
 
         Spacer(Modifier.height(12.dp))
         BannedPlayersCard(runtimeStatus = runtime.status)
+
+        Spacer(Modifier.height(12.dp))
+        DiagnosticsCard()
 
         Spacer(Modifier.height(16.dp))
         Button(
@@ -433,6 +439,50 @@ private fun BannedPlayersCard(runtimeStatus: com.moboserver.app.core.ServerStatu
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticsCard() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var result by remember { mutableStateOf<String?>(null) }
+    var running by remember { mutableStateOf(false) }
+    val summary = remember {
+        Diagnostics.summary(context) + "\n" + Diagnostics.freeSpace(context)
+    }
+
+    MoboCard {
+        SectionTitle("Diagnóstico")
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = summary,
+            color = MoboColors.TextSecondary,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+        )
+        Spacer(Modifier.height(10.dp))
+        OutlinedButton(
+            onClick = {
+                running = true
+                scope.launch {
+                    result = withContext(Dispatchers.IO) { Diagnostics.testBinary(context) }
+                    running = false
+                }
+            },
+            enabled = !running,
+        ) {
+            Text(if (running) "Testando..." else "Testar servidor embutido", fontSize = 13.sp)
+        }
+        result?.let { output ->
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = output,
+                color = MoboColors.Lime,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+            )
         }
     }
 }

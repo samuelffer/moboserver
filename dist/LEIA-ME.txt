@@ -38,8 +38,24 @@ Primeiros passos
 4. Toque em "Liberar porta" para tentar abrir a porta no roteador via UPnP.
    Depois use "Testar acesso" para confirmar que o mundo esta acessivel pela
    internet.
-5. Envie para os amigos o endereco mostrado (IP publico + porta). No Minecraft:
-   Jogar > Servidores > Adicionar servidor.
+5. Envie para os amigos o endereco mostrado (IP publico + porta).
+
+Quem consegue entrar
+--------------------
+PC (Windows 10/11), Android e iPhone/iPad: Jogar > Servidores > Adicionar
+servidor > endereco IP + porta. Funciona de qualquer rede.
+
+Xbox, PlayStation e Nintendo Switch: esses consoles NAO tem a opcao de digitar
+endereco (limitacao da Microsoft/Sony/Nintendo). Eles entram quando o servidor
+aparece na aba "LAN"/"Mundos", ou seja, com o console na MESMA rede Wi-Fi do
+celular. O MoboServer se anuncia sozinho nessa aba: ligue o servidor e abra o
+Minecraft no console.
+
+Se o app fechar sozinho
+------------------------
+Na proxima vez que abrir, o MoboServer mostra o relatorio da falha, com os
+botoes "Copiar" e "Compartilhar". Em Ajustes > Diagnostico voce tambem testa o
+servidor embutido e ve se o aparelho consegue executa-lo.
 
 Dicas de desempenho
 -------------------

@@ -190,7 +190,7 @@ private fun Header(state: RuntimeState) {
             contentAlignment = Alignment.Center,
         ) {
             Image(
-                painter = painterResource(id = R.mipmap.ic_launcher),
+                painter = painterResource(id = R.drawable.logo),
                 contentDescription = null,
                 modifier = Modifier.size(46.dp),
             )

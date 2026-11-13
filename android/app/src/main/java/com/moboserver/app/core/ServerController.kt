@@ -48,12 +48,24 @@ object ServerController {
         get() = _state.value.status == ServerStatus.STARTING || _state.value.status == ServerStatus.RUNNING ||
             _state.value.status == ServerStatus.STOPPING
 
-    /** Starts the server with the settings currently stored in [Store]. */
+    /**
+     * Starts the server with the settings currently stored in [Store].
+     *
+     * The heavy part (world folder, native binary and process spawn) runs on the
+     * IO dispatcher: this method is called from the foreground service, which
+     * runs on the main thread, and extracting a 30 MB binary there would freeze
+     * the app.
+     */
     @Synchronized
     fun start(): Boolean {
         val context = appContext ?: return false
         if (isBusy) return true
+        _state.value = RuntimeState(status = ServerStatus.STARTING)
+        scope.launch { startInternal(context) }
+        return true
+    }
 
+    private fun startInternal(context: Context) {
         val config = Store.config.value
         val repository = WorldRepository(context)
 
@@ -63,7 +75,7 @@ object ServerController {
                 repository.create("Mundo principal")
             } catch (e: Exception) {
                 fail("Não foi possível criar o mundo: ${e.message}")
-                return false
+                return
             }
             worldId = created.id
             Store.update { it.copy(activeWorldId = worldId) }
@@ -73,19 +85,18 @@ object ServerController {
         val worldDir = repository.directory(worldId)
         if (!worldDir.exists() && !worldDir.mkdirs()) {
             fail("Não foi possível preparar a pasta do mundo")
-            return false
+            return
         }
 
         synchronized(logs) { logs.clear() }
         stopRequested = false
-        _state.value = RuntimeState(status = ServerStatus.STARTING)
         appendLog("info", "Iniciando servidor \"${config.serverName}\" na porta UDP ${config.port}")
 
         val binary = try {
             ServerProcess.resolveBinary(context)
         } catch (e: Exception) {
             fail("O servidor embutido não foi encontrado no aplicativo: ${e.message}")
-            return false
+            return
         }
 
         val process = ServerProcess(
@@ -97,10 +108,9 @@ object ServerController {
         )
         serverProcess = process
 
-        return try {
+        try {
             process.start()
             watchStartup(process)
-            true
         } catch (e: Exception) {
             Log.e(TAG, "failed to start server", e)
             fail(
@@ -108,7 +118,6 @@ object ServerController {
                     "Isso pode acontecer em ROMs muito restritivas.",
             )
             serverProcess = null
-            false
         }
     }
 

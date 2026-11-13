@@ -24,7 +24,7 @@ import (
 
 // appVersion is the version of the embedded server, kept in sync with the
 // Android app version by the build workflow.
-const appVersion = "1.0.0"
+const appVersion = "1.0.2"
 
 // options holds every command line flag the Android app passes to the server
 // process. Everything is explicit: the process never reads a config file, so
@@ -42,6 +42,7 @@ type options struct {
 	Difficulty   string
 	ViewDistance int
 	Gen          string
+	Lan          bool
 	Selftest     bool
 	ShowVersion  bool
 
@@ -65,6 +66,7 @@ func parseFlags() options {
 	flag.StringVar(&o.Difficulty, "difficulty", "normal", "difficulty: peaceful, easy, normal or hard")
 	flag.IntVar(&o.ViewDistance, "view", 8, "maximum chunk radius (view distance) for players")
 	flag.StringVar(&o.Gen, "gen", "terrain", "world generator for new chunks: terrain or flat")
+	flag.BoolVar(&o.Lan, "lan", true, "announce the server on the local network (LAN tab)")
 	flag.BoolVar(&o.Selftest, "selftest", false, "start a throw-away server, ping it and exit")
 	flag.BoolVar(&o.ShowVersion, "version", false, "print version information and exit")
 	flag.Parse()
@@ -226,6 +228,10 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 		protocol.CurrentVersion, protocol.CurrentProtocol, opts.Port))
 	if opts.readyHook != nil {
 		opts.readyHook(srv)
+	}
+
+	if opts.Lan {
+		startLanAnnouncer(ctx, srv, opts)
 	}
 
 	go rt.acceptLoop()

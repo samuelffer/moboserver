@@ -37,6 +37,7 @@ class ServerService : Service() {
     private var observer: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
     private var finishing = false
 
     override fun onCreate() {
@@ -201,6 +202,12 @@ class ServerService : Service() {
                 setReferenceCounted(false)
                 acquire()
             }
+            // Multicast is what makes the server show up in the LAN tab of the
+            // Minecraft clients on the same Wi-Fi.
+            multicastLock = wifi?.createMulticastLock("MoboServer::lan")?.apply {
+                setReferenceCounted(false)
+                acquire()
+            }
         } catch (e: Exception) {
             // ignore
         }
@@ -217,8 +224,14 @@ class ServerService : Service() {
         } catch (e: Exception) {
             // ignore
         }
+        try {
+            if (multicastLock?.isHeld == true) multicastLock?.release()
+        } catch (e: Exception) {
+            // ignore
+        }
         wakeLock = null
         wifiLock = null
+        multicastLock = null
     }
 
     companion object {
