@@ -33,7 +33,7 @@ processo nativo do próprio app:
 * **Segundo plano**: serviço em primeiro plano + wake lock + Wi-Fi lock, com notificação
   permanente mostrando jogadores e porta.
 
-## Recursos da versão 1.0.5
+## Recursos da versão 1.0.6
 
 | Recurso | Detalhe |
 | --- | --- |
@@ -58,9 +58,9 @@ processo nativo do próprio app:
 
 | Arquivo | Tamanho | SHA-256 |
 | --- | --- | --- |
-| [`releases_apk/MoboServer-v1.0.5-android-arm64.zip`](releases_apk/MoboServer-v1.0.5-android-arm64.zip) | 18,5 MB | `e01b86376b5131569f3cc46fdf207001816e7960b262fed2d8415eaf9b44f7f3` |
+| [`releases_apk/MoboServer-v1.0.6-android-arm64.zip`](releases_apk/MoboServer-v1.0.6-android-arm64.zip) | 18,5 MB | `0b10673f9f44667bc11722eb7c061562e2d973c5bf878d2ff21a79ff2f2c179e` |
 
-O ZIP contém `MoboServer-v1.0.5.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
+O ZIP contém `MoboServer-v1.0.6.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
 (`apksigner verify` roda no CI) e as próximas versões instalam por cima desta.
 
 ## Instalação
@@ -69,7 +69,7 @@ Copie o APK do ZIP para o celular e abra o arquivo — o Android vai pedir permi
 instalar apps de fontes desconhecidas. Para conferir o download, compare o SHA-256 acima:
 
 ```bash
-sha256sum MoboServer-v1.0.5-android-arm64.zip
+sha256sum MoboServer-v1.0.6-android-arm64.zip
 ```
 
 ## Quem consegue entrar
@@ -174,6 +174,16 @@ validação final é a primeira execução no seu celular. Se algo falhar, o con
 a mensagem de erro do servidor.
 
 ## Changelog
+
+### 1.0.6
+
+* **Detecção de CGNAT**: quando o IP público está em `100.64/10`, o app avisa que redirecionar a
+  porta não resolve e sugere Tailscale/ZeroTier.
+* **Passo a passo de port forwarding**: se o roteador não tem UPnP, a tela mostra a regra exata
+  (UDP, porta, IP do celular) com botão de copiar.
+* **LAN em redes 100.64/10**: hotspots e redes com CGNAT também são anunciados na aba LAN
+  (antes eram descartados por não serem 192.168/10/172.16).
+* Aviso claro quando o celular está sem Wi-Fi (dados móveis não recebem conexões de fora).
 
 ### 1.0.5
 
