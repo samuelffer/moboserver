@@ -130,7 +130,7 @@ private fun PlayerPingCard(state: RuntimeState, running: Boolean) {
             measured.isEmpty() -> {
                 Text(
                     "O servidor está com jogadores, mas o transporte ativo não informa o RTT deles. " +
-                        "Prefira mostrar \\"Sem medição\\" a inventar um valor.",
+                        "Prefira mostrar \"Sem medição\" a inventar um valor.",
                     color = MoboColors.TextSecondary,
                     fontSize = 13.sp,
                 )
