@@ -60,19 +60,22 @@ jobs:
           # GOOS=android e obrigatorio: um PIE compilado para linux pede o
           # loader do glibc (/lib/ld-linux-aarch64.so.1), que nao existe no
           # Android, e o exec falha com "error=2, No such file or directory".
-          if ! CGO_ENABLED=0 GOOS=android GOARCH=arm64 \
+          if ! CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
             go build -buildmode=pie -trimpath -ldflags="-s -w" -o "$OUT/libmobosrv.so" . \
-            > /tmp/go-android.log 2>&1; then
-            echo "=== falha ao compilar para android ==="
-            cat /tmp/go-android.log
-            mkdir -p ../.ci-logs && cp /tmp/go-android.log ../.ci-logs/go-android.log
-            git -C .. add -f .ci-logs/go-android.log
+            > /tmp/go-arm64.log 2>&1; then
+            echo "=== falha ao compilar para arm64 ==="
+            cat /tmp/go-arm64.log
+            mkdir -p ../.ci-logs && cp /tmp/go-arm64.log ../.ci-logs/go-arm64.log
+            git -C .. add -f .ci-logs/go-arm64.log
             git -C .. -c user.name="github-actions[bot]" \
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              commit -m "ci: log do build android [skip ci]" || true
+              commit -m "ci: log do build arm64 [skip ci]" || true
             git -C .. push || true
             exit 1
           fi
+          # PIE linux aponta para o loader do glibc, que nao existe no Android:
+          # troca por /system/bin/linker64 (ver scripts/patch-interp.py).
+          python3 ../scripts/patch-interp.py "$OUT/libmobosrv.so"
           ls -lh "$OUT/libmobosrv.so"
           file "$OUT/libmobosrv.so"
 

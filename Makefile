@@ -16,8 +16,9 @@ test: server
 ## Compila o servidor para Android arm64 dentro do projeto Android
 server-arm64:
 	mkdir -p $(JNI_DIR)
-	cd server && CGO_ENABLED=0 GOOS=android GOARCH=arm64 $(GO) build -buildmode=pie \
+	cd server && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -buildmode=pie \
 		-trimpath -ldflags="-s -w" -o ../$(JNI_DIR)/libmobosrv.so .
+	python3 scripts/patch-interp.py $(JNI_DIR)/libmobosrv.so
 
 ## Gera o APK release
 apk: server-arm64
