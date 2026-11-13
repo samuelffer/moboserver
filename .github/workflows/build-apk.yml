@@ -102,12 +102,20 @@ jobs:
 
       - name: Diagnostico do build
         if: failure()
+        continue-on-error: true
         run: |
+          set -uo pipefail
+          mkdir -p .ci-logs
           if [ -f /tmp/gradle.log ]; then
-            echo "=== Inicio do erro (ultimas linhas relevantes) ==="
-            grep -nE "e: file|error:|FAILURE|What went wrong|Caused by|Execution failed|> Task .*FAILED" /tmp/gradle.log | head -40 || true
-            echo "=== Fim ==="
+            tail -c 200000 /tmp/gradle.log > .ci-logs/gradle.log
+            grep -nE "e: file|error:|FAILURE|What went wrong|Caused by|Execution failed" .ci-logs/gradle.log | head -40 || true
           fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f .ci-logs/gradle.log || true
+          git commit -m "ci: diagnostico do build [skip ci]" || true
+          git pull --rebase --autostash origin "$GITHUB_REF_NAME" || true
+          git push origin "HEAD:$GITHUB_REF_NAME" || true
 
       - name: Verificar APK
         run: |
