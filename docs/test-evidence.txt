@@ -1,0 +1,18 @@
+MoboServer - evidencias automatizadas do ultimo build verde
+Commit: 60b3e580f773d873c1ebbcd08fda5340d956fec4
+Data: 2026-11-13T20:45:29Z
+
+ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.238s
+selftest: surface block at spawn: block.Grass
+selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;7335804712668527223;;Survival;1;19132;19132;0;0;
+selftest: interface eth0 (10.1.0.99) respondeu no ping
+SELFTEST OK
+selftest: surface block at spawn: block.Grass
+selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;8953642037769759963;;Survival;1;19555;19555;0;0;
+selftest: interface eth0 (10.1.0.99) respondeu no ping
+SELFTEST OK
+selftest: surface block at spawn: block.Grass
+selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;405769710908131078;;Survival;1;19132;19132;0;0;
+selftest: interface eth0 (10.1.0.99) respondeu no ping
+selftest: tunel ok, porta publica 44703 respondeu ao ping RakNet
+SELFTEST OK
