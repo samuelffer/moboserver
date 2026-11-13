@@ -108,13 +108,13 @@ func waitForSignaling(port int, timeout time.Duration) (signallingInfo, error) {
 	info := signallingInfo{}
 	var lastErr error = fmt.Errorf("porta %d nao aceitou conexao", port)
 	for time.Now().Before(deadline) {
+		requestStart := time.Now()
 		resp, err := client.Get(url)
 		if err != nil {
 			lastErr = err
 			time.Sleep(300 * time.Millisecond)
 			continue
 		}
-		requestStart := time.Now()
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 		_ = resp.Body.Close()
 		info.Status = resp.StatusCode

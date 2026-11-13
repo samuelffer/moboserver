@@ -428,20 +428,11 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	}
 
 	transports := make([]string, 0, 2)
-	failures := 0
-	if opts.NetherNet {
-		if signErr == nil {
-			transports = append(transports, "nethernet")
-		} else {
-			failures++
-		}
+	if opts.NetherNet && signErr == nil {
+		transports = append(transports, "nethernet")
 	}
-	if opts.RakNet {
-		if raknetErr == nil {
-			transports = append(transports, "raknet")
-		} else {
-			failures++
-		}
+	if opts.RakNet && raknetErr == nil {
+		transports = append(transports, "raknet")
 	}
 	if len(transports) == 0 {
 		_ = srv.Close()
