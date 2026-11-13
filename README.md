@@ -58,9 +58,9 @@ processo nativo do próprio app:
 
 | Arquivo | Tamanho | SHA-256 |
 | --- | --- | --- |
-| [`releases_apk/MoboServer-v1.0.1-android-arm64.zip`](releases_apk/MoboServer-v1.0.1-android-arm64.zip) | 18,4 MB | `2a9e67a00fb29275a1e13916348b7ba7f2ec466b994bbc133d85ec15fbc6c7a9` |
+| [`releases_apk/MoboServer-v1.0.2-android-arm64.zip`](releases_apk/MoboServer-v1.0.2-android-arm64.zip) | 18,5 MB | `4057c4821b07658cf69b022b043d13047c18466998f5ce2d3fae3f11d018642d` |
 
-O ZIP contém `MoboServer-v1.0.1.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
+O ZIP contém `MoboServer-v1.0.2.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
 (`apksigner verify` roda no CI) e as próximas versões instalam por cima desta.
 
 ## Instalação
@@ -69,8 +69,18 @@ Copie o APK do ZIP para o celular e abra o arquivo — o Android vai pedir permi
 instalar apps de fontes desconhecidas. Para conferir o download, compare o SHA-256 acima:
 
 ```bash
-sha256sum MoboServer-v1.0.1-android-arm64.zip
+sha256sum MoboServer-v1.0.2-android-arm64.zip
 ```
+
+## Quem consegue entrar
+
+| Plataforma | Como entrar |
+| --- | --- |
+| **PC (Windows 10/11)**, **Android**, **iPhone/iPad** | *Jogar → Servidores → Adicionar servidor* com o IP e a porta. Funciona de qualquer rede, desde que a porta esteja liberada. |
+| **Xbox, PlayStation, Nintendo Switch** | Esses consoles **não têm** o botão de adicionar servidor (limitação de Microsoft/Sony/Nintendo). Eles entram quando o servidor aparece na aba **LAN/Mundos**, ou seja, com o console **na mesma rede Wi-Fi** do celular — é para isso que o app se anuncia sozinho na LAN. |
+
+O servidor é Bedrock puro: **não** aceita Minecraft Java (PC Java), a não ser através de
+tradutores como o Geyser, que não vêm incluídos.
 
 ## Uso
 
@@ -158,6 +168,26 @@ Android): o caminho de execução do binário, o serviço em primeiro plano, o U
 reais e o layout em telas pequenas foram escritos seguindo as APIs documentadas, mas a
 validação final é a primeira execução no seu celular. Se algo falhar, o console do app mostra
 a mensagem de erro do servidor.
+
+## Changelog
+
+### 1.0.2
+
+* **Correção do crash ao abrir**: a tela inicial carregava `@mipmap/ic_launcher` como bitmap,
+  mas em Android 8+ esse recurso é um *adaptive icon* (XML), e o Compose não consegue
+  decodificá-lo — o app abria e fechava na hora. Agora usa um PNG dedicado.
+* **Relatório de falhas**: se o app cair, a próxima abertura mostra o erro com "Copiar" e
+  "Compartilhar" (antes fechava em silêncio).
+* **Anúncio na LAN**: o servidor se anuncia como um mundo aberto para LAN, então PC, celular
+  e consoles na mesma rede Wi-Fi encontram o mundo sem digitar IP.
+* **Início/parada fora da thread principal**: evita travar a interface em aparelhos lentos.
+* **Diagnóstico nos Ajustes**: testa o binário embutido (`mobosrv -version`) e mostra ABI,
+  caminho e espaço livre.
+
+### 1.0.1
+
+* Correção do envio do comando `stop` (salvar o mundo ao desligar).
+* Lista de banidos com "Desbanir" nos Ajustes.
 
 ## Limitações conhecidas
 
