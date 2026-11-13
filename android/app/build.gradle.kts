@@ -98,6 +98,8 @@ dependencies {
 
     // Testes de JVM da lógica pura (seleção de mundo e mesclagem de config).
     testImplementation("junit:junit:4.13.2")
+    // org.json real nos testes de JVM (o android.jar só tem stubs que lançam).
+    testImplementation("org.json:json:20240303")
 }
 
 /**

@@ -140,3 +140,57 @@ class WorldSelectionTest {
         assertEquals("wA", config.activeWorldId)
     }
 }
+
+/**
+ * Persistência: a seleção não pode desaparecer ao reabrir o app. Antes, um campo
+ * estranho no JSON fazia `decode` devolver a configuração padrão inteira.
+ */
+class ConfigCodecTest {
+
+    @Test
+    fun `ida e volta preserva o mundo selecionado`() {
+        val original = ServerConfig(serverName = "Casa", port = 19500, rakNet = true, activeWorldId = "w1730")
+        val decoded = ConfigCodec.decode(ConfigCodec.encode(original))
+        assertEquals(original, decoded)
+        assertEquals("w1730", decoded.activeWorldId)
+    }
+
+    @Test
+    fun `json corrompido devolve padroes sem quebrar`() {
+        val decoded = ConfigCodec.decode("{isso não é json")
+        assertEquals("", decoded.activeWorldId)
+        assertEquals(19132, decoded.port)
+    }
+
+    @Test
+    fun `campo com tipo errado nao apaga a selecao`() {
+        val raw = """{"activeWorldId":"wA","port":"não é número","maxPlayers":null,"rakNet":"true"}"""
+        val decoded = ConfigCodec.decode(raw)
+        assertEquals("wA", decoded.activeWorldId)
+        assertEquals(19132, decoded.port)
+        assertEquals(4, decoded.maxPlayers)
+        assertTrue(decoded.rakNet)
+    }
+
+    @Test
+    fun `porta fora da faixa e corrigida sem perder o mundo`() {
+        val decoded = ConfigCodec.decode("""{"activeWorldId":"wB","port":99999}""")
+        assertEquals("wB", decoded.activeWorldId)
+        assertEquals(65535, decoded.port)
+    }
+
+    @Test
+    fun `json antigo sem campos novos usa padroes`() {
+        val decoded = ConfigCodec.decode("""{"activeWorldId":"wC","serverName":"Antigo"}""")
+        assertEquals("wC", decoded.activeWorldId)
+        assertEquals("Antigo", decoded.serverName)
+        assertFalse(decoded.rakNet)
+        assertEquals("", decoded.externalHost)
+    }
+
+    @Test
+    fun `espacos em volta do id sao removidos`() {
+        val decoded = ConfigCodec.decode("""{"activeWorldId":"  wD  "}""")
+        assertEquals("wD", decoded.activeWorldId)
+    }
+}
