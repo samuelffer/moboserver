@@ -33,7 +33,7 @@ processo nativo do próprio app:
 * **Segundo plano**: serviço em primeiro plano + wake lock + Wi-Fi lock, com notificação
   permanente mostrando jogadores e porta.
 
-## Recursos da versão 1.0.3
+## Recursos da versão 1.0.4
 
 | Recurso | Detalhe |
 | --- | --- |
@@ -58,9 +58,9 @@ processo nativo do próprio app:
 
 | Arquivo | Tamanho | SHA-256 |
 | --- | --- | --- |
-| [`releases_apk/MoboServer-v1.0.3-android-arm64.zip`](releases_apk/MoboServer-v1.0.3-android-arm64.zip) | 18,5 MB | `3311132e1332bd1f335f98ae899b868c91f310b4d4de58cd039314602520a242` |
+| [`releases_apk/MoboServer-v1.0.4-android-arm64.zip`](releases_apk/MoboServer-v1.0.4-android-arm64.zip) | 18,5 MB | `1ffac7f378563dde6fd5afa17229b95823c2f37b03ab4e7e6821f9d7cfab4cfe` |
 
-O ZIP contém `MoboServer-v1.0.3.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
+O ZIP contém `MoboServer-v1.0.4.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
 (`apksigner verify` roda no CI) e as próximas versões instalam por cima desta.
 
 ## Instalação
@@ -69,7 +69,7 @@ Copie o APK do ZIP para o celular e abra o arquivo — o Android vai pedir permi
 instalar apps de fontes desconhecidas. Para conferir o download, compare o SHA-256 acima:
 
 ```bash
-sha256sum MoboServer-v1.0.3-android-arm64.zip
+sha256sum MoboServer-v1.0.4-android-arm64.zip
 ```
 
 ## Quem consegue entrar
@@ -124,8 +124,9 @@ exposição:
 
 Pré-requisitos: Go 1.26+, JDK 17, Android SDK 35.
 
-> O binário arm64 precisa de um passo extra (`scripts/patch-interp.py`) para apontar o
-> interpretador ELF para `/system/bin/linker64`; o `make server-arm64` já faz isso.
+> O binário arm64 precisa de um passo extra (`scripts/patch-android-elf.py`) que aponta o
+> interpretador ELF para `/system/bin/linker64` e alinha o `PT_TLS` em 64 bytes, como o Bionic
+> exige; o `make server-arm64` já faz isso.
 
 ```bash
 # 1. Servidor embutido (também roda o self-test)
@@ -173,6 +174,14 @@ validação final é a primeira execução no seu celular. Se algo falhar, o con
 a mensagem de erro do servidor.
 
 ## Changelog
+
+### 1.0.4
+
+* **Correção do aborto do Bionic**: o linker do Android exige `PT_TLS` alinhado em 64 bytes no
+  ARM64 (`executable's TLS segment is underaligned: alignment is 8, needs to be at least 64 for
+  ARM64 Bionic`, SIGABRT/código 134). O linker do Go grava 8. Agora o build ajusta o alinhamento
+  (o segmento nem é lido: sem cgo o runtime do Go não usa TLS).
+* O CI valida interp, alinhamento de TLS, ausência de `DT_NEEDED` e PIE aarch64 antes de empacotar.
 
 ### 1.0.3
 
