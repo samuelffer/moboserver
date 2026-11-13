@@ -19,23 +19,36 @@ object Net {
         try {
             for (iface in Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 if (!iface.isUp || iface.isLoopback) continue
+                val name = iface.name ?: ""
+                // Cellular interfaces are not a LAN: announcing there is useless.
+                if (name.startsWith("rmnet") || name.startsWith("ccmni") || name.startsWith("radio")) {
+                    continue
+                }
+                val preferred = name.startsWith("wlan") || name.startsWith("ap") || name.startsWith("eth")
                 for (addr in Collections.list(iface.inetAddresses)) {
-                    if (addr.isLoopbackAddress) continue
+                    if (addr.isLoopbackAddress || addr.isLinkLocalAddress) continue
                     val host = addr.hostAddress ?: continue
                     if (host.contains(':')) continue // IPv6: not used by Bedrock
-                    if (addr.isSiteLocalAddress) {
-                        val name = iface.name ?: ""
-                        if (name.startsWith("wlan") || name.startsWith("ap") || name.startsWith("eth")) {
-                            return host
-                        }
-                        if (fallback == null) fallback = host
-                    }
+                    // 192.168/10/172.16 are the classic ones; 100.64/10 shows up on
+                    // hotspots and carriers that use CGNAT, and is still a valid LAN.
+                    if (!addr.isSiteLocalAddress && !isCarrierGradeNat(host)) continue
+                    if (preferred) return host
+                    if (fallback == null) fallback = host
                 }
             }
         } catch (e: Exception) {
             return null
         }
         return fallback
+    }
+
+    /** 100.64.0.0/10 — shared address space used by CGNAT and some hotspots. */
+    fun isCarrierGradeNat(ip: String): Boolean {
+        val parts = ip.split('.')
+        if (parts.size != 4) return false
+        val first = parts[0].toIntOrNull() ?: return false
+        val second = parts[1].toIntOrNull() ?: return false
+        return first == 100 && second in 64..127
     }
 
     private val STUN_SERVERS = listOf(

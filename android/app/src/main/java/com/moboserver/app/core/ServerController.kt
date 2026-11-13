@@ -239,8 +239,21 @@ object ServerController {
             }
 
             val publicIp = _state.value.exposure.publicIp ?: Net.publicIp()
+            val cgnat = publicIp != null && Net.isCarrierGradeNat(publicIp)
+            if (cgnat) {
+                appendLog(
+                    "warn",
+                    "Seu IP público ($publicIp) está na faixa 100.64/10: o provedor usa CGNAT. " +
+                        "Ninguém de fora consegue conectar, mesmo liberando a porta. " +
+                        "Use Tailscale/ZeroTier (grátis) ou peça IP público ao provedor.",
+                )
+            }
             _state.value = _state.value.copy(
-                exposure = _state.value.exposure.copy(working = false, publicIp = publicIp),
+                exposure = _state.value.exposure.copy(
+                    working = false,
+                    publicIp = publicIp,
+                    carrierGradeNat = cgnat,
+                ),
             )
         }
     }

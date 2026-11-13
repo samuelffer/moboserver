@@ -488,7 +488,7 @@ private fun ExposureCard(
 
         InfoLine(
             label = "Rede Wi-Fi",
-            value = exposure.lanIp?.let { "$it:$port" } ?: "sem Wi-Fi",
+            value = exposure.lanIp?.let { "$it:$port" } ?: "sem Wi-Fi (dados móveis)",
             mono = true,
         )
         InfoLine(
@@ -517,6 +517,55 @@ private fun ExposureCard(
         if (exposure.externalCheck != null) {
             Spacer(Modifier.height(6.dp))
             Text(text = exposure.externalCheck, color = MoboColors.Info, fontSize = 12.sp)
+        }
+        if (running && !exposure.working && exposure.lanIp == null) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "O celular está sem Wi-Fi. Na mesma rede (LAN) só funciona com Wi-Fi ligado; " +
+                    "por dados móveis geralmente não dá para receber conexões de fora. " +
+                    "Ligue o Wi-Fi para jogar com quem está perto de você.",
+                color = MoboColors.Warning,
+                fontSize = 12.sp,
+            )
+        }
+        if (exposure.carrierGradeNat) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Seu provedor usa CGNAT (IP 100.64.x.x compartilhado). Mesmo liberando a porta, " +
+                    "ninguém de fora consegue entrar. Alternativas gratuitas: Tailscale ou ZeroTier " +
+                    "instalados no celular e no PC de quem vai jogar, ou pedir IP público ao provedor.",
+                color = MoboColors.Danger,
+                fontSize = 12.sp,
+            )
+        } else if (!exposure.upnpOk && exposure.upnpMessage != null && exposure.lanIp != null) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Sem UPnP: libere a porta no roteador (manual)",
+                color = MoboColors.Warning,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "1. Abra o painel do roteador no navegador (em geral 192.168.0.1).\n" +
+                    "2. Procure \"Port forwarding\" / \"Redirecionamento de portas\".\n" +
+                    "3. Regra nova: protocolo UDP, porta externa e interna ${port}, " +
+                    "IP de destino ${exposure.lanIp}.\n" +
+                    "4. Salve e use \"Testar acesso\".",
+                color = MoboColors.TextSecondary,
+                fontSize = 12.sp,
+            )
+            Spacer(Modifier.height(2.dp))
+            TextButton(onClick = { onCopy("UDP $port -> ${exposure.lanIp}") }) {
+                Icon(
+                    Icons.Filled.ContentCopy,
+                    contentDescription = null,
+                    tint = MoboColors.Lime,
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("Copiar dados da regra", color = MoboColors.Lime, fontSize = 12.sp)
+            }
         }
 
         Spacer(Modifier.height(12.dp))

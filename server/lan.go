@@ -25,7 +25,8 @@ const lanServerID uint64 = 13253860892328930865
 func startLanAnnouncer(ctx context.Context, srv *server.Server, opts options) {
 	ip := lanInterfaceIPv4()
 	if ip == nil {
-		emitLog("warn", "Sem rede local (Wi-Fi): o servidor não será anunciado na aba LAN.")
+		emitLog("warn", "Sem rede local (Wi-Fi): o servidor não será anunciado na aba LAN. "+
+			"Na aba LAN só aparecem aparelhos na mesma rede Wi-Fi; em dados móveis isso não existe.")
 		return
 	}
 
@@ -135,7 +136,12 @@ func lanInterfaceIPv4() *[4]byte {
 				continue
 			}
 			ip4 := ipNet.IP.To4()
-			if ip4 == nil || !ip4.IsPrivate() {
+			if ip4 == nil || ip4.IsLoopback() || ip4.IsLinkLocalUnicast() || ip4.IsUnspecified() {
+				continue
+			}
+			// Aceita 10/8, 172.16/12, 192.168/16, 100.64/10 (hotspot com
+			// CGNAT) e qualquer IPv4 de uma interface de Wi-Fi/Ethernet.
+			if !ip4.IsPrivate() && !isSharedAddress(ip4) && score < 2 {
 				continue
 			}
 			if score > bestScore {
@@ -145,6 +151,12 @@ func lanInterfaceIPv4() *[4]byte {
 		}
 	}
 	return best
+}
+
+// isSharedAddress reports whether ip is inside 100.64.0.0/10 (RFC 6598),
+// the range carriers and phone hotspots use when they NAT their clients.
+func isSharedAddress(ip net.IP) bool {
+	return len(ip) == 4 && ip[0] == 100 && ip[1] >= 64 && ip[1] <= 127
 }
 
 func scoreInterface(name string) int {

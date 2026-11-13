@@ -34,6 +34,8 @@ data class Exposure(
     val upnpOk: Boolean = false,
     val working: Boolean = false,
     val externalCheck: String? = null,
+    /** Provedor usa CGNAT: nem redirecionar a porta resolve. */
+    val carrierGradeNat: Boolean = false,
 )
 
 /** Everything the UI renders, published by [ServerController]. */
