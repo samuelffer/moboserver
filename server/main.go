@@ -60,6 +60,9 @@ type options struct {
 	RakNet     bool
 	LogLevel   string
 	ValidateWorld string
+	// RequireWorld recusa iniciar sem um mundo importado e válido. É o padrão
+	// do app: a criação de mundo acontece no Minecraft, não aqui.
+	RequireWorld bool
 	IfaceFile  string
 	Selftest     bool
 	SelftestTunnel bool
@@ -94,6 +97,8 @@ func parseFlags() options {
 		"also listen on the legacy RakNet transport (UDP 19132 + LAN discovery); off by default")
 	flag.StringVar(&o.LogLevel, "log-level", "info",
 		"minimum log level sent to the app: debug, info, warn or error")
+	flag.BoolVar(&o.RequireWorld, "require-world", false,
+		"refuse to start without an imported, valid world folder")
 	flag.StringVar(&o.ValidateWorld, "validate-world", "",
 		"validate a world folder, fix level.dat metadata and print the result as JSON, then exit")
 	flag.StringVar(&o.NetherNetPorts, "nethernet-ports", "19133-19140",
@@ -197,12 +202,24 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	imported := worldExists(opts.World)
 	if imported {
 		emitLog("info", "Mundo encontrado: abrindo dados existentes...")
+	} else if opts.RequireWorld {
+		return worldErr(worldCodeIncomplete,
+			"nenhum mundo importado nesta pasta: importe um mundo Bedrock antes de iniciar")
 	} else {
 		emitLog("info", "Nenhum mundo encontrado: um novo mundo sera gerado.")
 		if opts.Gen == "flat" {
 			emitLog("info", "Gerador selecionado: superflat")
 		} else {
 			emitLog("info", "Gerador selecionado: terreno natural")
+		}
+	}
+
+	if opts.RequireWorld {
+		// O app só oferece "Iniciar" com um mundo importado. A checagem fica no
+		// binário também para o caso de um mundo ter sido apagado ou copiado pela
+		// metade: melhor recusar do que subir um mundo vazio em cima do arquivo.
+		if v := validateWorldDir(opts.World); !v.OK {
+			return worldErr(v.Code, "%s", v.Detail)
 		}
 	}
 

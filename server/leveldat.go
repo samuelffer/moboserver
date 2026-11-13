@@ -293,19 +293,9 @@ func stripTags(payload []byte, drop map[string]bool, spans []nbtSig, end int) []
 	return kept
 }
 
-// prepareLevelDat makes a level.dat readable by the engine without losing
-// metadata. It returns nil when the file needs no change.
-func prepareLevelDat(path string) (*levelDatFix, error) {
-	version, payload, err := readLevelDat(path)
-	if err != nil {
-		return nil, err
-	}
-	// Fast path: the engine reads this file as it is.
-	var probe leveldat.Data
-	if err := nbt.UnmarshalEncoding(payload, &probe, nbt.LittleEndian); err == nil {
-		return nil, nil
-	}
-
+// unknownTags returns the names of the top-level tags the engine cannot decode.
+// It never changes the payload: it only simulates the removal.
+func unknownTags(payload []byte) ([]string, error) {
 	spans, end, err := nbtScan(payload)
 	if err != nil {
 		return nil, err
@@ -314,49 +304,86 @@ func prepareLevelDat(path string) (*levelDatFix, error) {
 	for _, sig := range spans {
 		available[sig.Name] = true
 	}
-
 	drop := map[string]bool{}
-	var decoded leveldat.Data
-	var lastErr error
 	for attempt := 0; attempt < 64; attempt++ {
 		candidate := stripTags(payload, drop, spans, end)
 		var data leveldat.Data
 		err := nbt.UnmarshalEncoding(candidate, &data, nbt.LittleEndian)
 		if err == nil {
-			decoded = data
-			break
+			names := make([]string, 0, len(drop))
+			for name := range drop {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			return names, nil
 		}
-		lastErr = err
 		var unexpected nbt.UnexpectedNamedTagError
 		if errors.As(err, &unexpected) && unexpected.TagName != "" && available[unexpected.TagName] && !drop[unexpected.TagName] {
-			// A tag the engine cannot store, but that we can keep intact and put
-			// back when the world is saved.
+			// A top-level tag the engine cannot store, but that we can keep
+			// intact and put back when the world is saved.
 			drop[unexpected.TagName] = true
 			continue
 		}
 		// Anything else (type mismatch, corrupt NBT, unknown nested tag) is a
 		// real incompatibility: report it instead of dropping data silently.
+		return nil, err
+	}
+	return nil, errors.New("level.dat com metadados demais para recortar")
+}
+
+// prepareLevelDat makes a level.dat readable by the engine without losing
+// metadata. It returns nil when the file needs no change.
+func prepareLevelDat(path string) (*levelDatFix, error) {
+	version, payload, err := readLevelDat(path)
+	if err != nil {
+		return nil, err
+	}
+	// Fast path: the engine reads this file as it is. The one exception is a
+	// file that was already normalised in an earlier run: the tags live in the
+	// backup and still have to come back when the world is saved, otherwise the
+	// second save would silently drop them.
+	var probe leveldat.Data
+	if err := nbt.UnmarshalEncoding(payload, &probe, nbt.LittleEndian); err == nil {
+		return fixFromBackup(path, probe.LevelName)
+	}
+
+	names, err := unknownTags(payload)
+	if err != nil {
 		return nil, worldErr(worldCodeIncompatible,
 			"o level.dat deste mundo tem metadados que esta versão do motor não lê (%v). "+
 				"Abra e salve o mundo no Minecraft uma vez, ou importe um .mcworld exportado por ele", err)
 	}
-	if len(drop) == 0 {
-		return nil, worldErr(worldCodeIncompatible,
-			"o level.dat deste mundo não pôde ser lido pelo motor: %v", lastErr)
+	if len(names) == 0 {
+		return nil, worldErr(worldCodeIncompatible, "o level.dat deste mundo não pôde ser lido pelo motor")
 	}
 
-	fix := &levelDatFix{Path: path, LevelName: decoded.LevelName}
-	names := make([]string, 0, len(drop))
-	for name := range drop {
-		names = append(names, name)
+	decoded := leveldat.Data{}
+	{
+		spans, end, scanErr := nbtScan(payload)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		drop := map[string]bool{}
+		for _, name := range names {
+			drop[name] = true
+		}
+		if err := nbt.UnmarshalEncoding(stripTags(payload, drop, spans, end), &decoded, nbt.LittleEndian); err != nil {
+			return nil, worldErr(worldCodeIncompatible, "o level.dat deste mundo não pôde ser lido pelo motor: %v", err)
+		}
 	}
-	sort.Strings(names)
-	fix.Names = names
+
+	fix := &levelDatFix{Path: path, Names: names, LevelName: decoded.LevelName}
+	spans, end, err := nbtScan(payload)
+	if err != nil {
+		return nil, err
+	}
 	for _, sig := range spans {
-		if drop[sig.Name] {
-			raw := make([]byte, sig.End-sig.Start)
-			copy(raw, payload[sig.Start:sig.End])
-			fix.Removed = append(fix.Removed, raw)
+		for _, name := range names {
+			if sig.Name == name {
+				raw := make([]byte, sig.End-sig.Start)
+				copy(raw, payload[sig.Start:sig.End])
+				fix.Removed = append(fix.Removed, raw)
+			}
 		}
 	}
 
@@ -370,8 +397,47 @@ func prepareLevelDat(path string) (*levelDatFix, error) {
 			return nil, worldErr(worldCodeInvalidFile, "não foi possível guardar uma cópia do level.dat: %v", writeErr)
 		}
 	}
+	drop := map[string]bool{}
+	for _, name := range names {
+		drop[name] = true
+	}
 	if err := writeLevelDat(path, version, stripTags(payload, drop, spans, end)); err != nil {
 		return nil, worldErr(worldCodeInvalidFile, "não foi possível ajustar o level.dat: %v", err)
+	}
+	return fix, nil
+}
+
+// fixFromBackup rebuilds the restore plan from level.dat.original. It is what
+// keeps the metadata alive when the world is opened, saved and opened again.
+func fixFromBackup(path, levelName string) (*levelDatFix, error) {
+	backup := path + levelDatBackupSuffix
+	if _, err := os.Stat(backup); err != nil {
+		return nil, nil
+	}
+	_, original, err := readLevelDat(backup)
+	if err != nil {
+		return nil, nil // o backup ilegível não impede o servidor de abrir
+	}
+	names, err := unknownTags(original)
+	if err != nil || len(names) == 0 {
+		return nil, nil
+	}
+	spans, _, err := nbtScan(original)
+	if err != nil {
+		return nil, nil
+	}
+	fix := &levelDatFix{Path: path, Names: names, LevelName: levelName}
+	for _, sig := range spans {
+		for _, name := range names {
+			if sig.Name == name {
+				raw := make([]byte, sig.End-sig.Start)
+				copy(raw, original[sig.Start:sig.End])
+				fix.Removed = append(fix.Removed, raw)
+			}
+		}
+	}
+	if len(fix.Removed) != len(fix.Names) {
+		return nil, nil
 	}
 	return fix, nil
 }

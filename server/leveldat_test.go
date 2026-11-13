@@ -56,6 +56,9 @@ func buildLevelDat(t *testing.T, dir string, data leveldat.Data, extraInt int32)
 	if err := writeLevelDat(path, int32(version), merged); err != nil {
 		t.Fatalf("write level.dat: %v", err)
 	}
+	t.Logf("DEBUG payload len=%d rootEnd=%d firstType=%#x lastSpan=%+v inserted=%x",
+		len(merged), end, merged[0], spans[len(spans)-1], tag)
+	t.Logf("DEBUG head=%x tail=%x", merged[:12], merged[end-6:])
 	return path
 }
 
