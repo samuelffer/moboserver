@@ -14,7 +14,13 @@ import java.util.zip.ZipFile
 
 /** Events emitted by the embedded server process on its stdout. */
 sealed class ServerEvent {
-    data class Ready(val port: Int, val version: String, val protocol: Int, val maxPlayers: Int) : ServerEvent()
+    data class Ready(
+        val port: Int,
+        val version: String,
+        val protocol: Int,
+        val maxPlayers: Int,
+        val authEnabled: Boolean,
+    ) : ServerEvent()
     data class Log(val level: String, val message: String) : ServerEvent()
     data class Join(val player: PlayerInfo) : ServerEvent()
     data class Quit(val name: String) : ServerEvent()
@@ -111,6 +117,7 @@ class ServerProcess(
                     version = obj.optString("version"),
                     protocol = obj.optInt("protocol"),
                     maxPlayers = obj.optInt("max"),
+                    authEnabled = obj.optBoolean("auth", true),
                 )
             )
             "join" -> listener(

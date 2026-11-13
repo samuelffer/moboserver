@@ -277,8 +277,8 @@ object ServerController {
             delay(60_000)
             if (_state.value.status == ServerStatus.STARTING) {
                 fail(
-                    "O servidor não terminou de iniciar. Verifique se o celular está conectado à internet " +
-                        "(necessário para validar o login do Xbox) e tente novamente.",
+                    "O servidor não terminou de iniciar em 60 segundos. Abra o Console para ver a última " +
+                        "mensagem do servidor e tente novamente.",
                 )
                 process.destroy()
             }
@@ -291,7 +291,7 @@ object ServerController {
                 _state.value = _state.value.copy(
                     status = ServerStatus.RUNNING,
                     startedAt = System.currentTimeMillis(),
-                    info = ServerInfo(event.port, event.version, event.protocol, event.maxPlayers),
+                    info = ServerInfo(event.port, event.version, event.protocol, event.maxPlayers, event.authEnabled),
                     error = null,
                 )
                 appendLog("info", "Servidor online! Minecraft Bedrock ${event.version} • porta ${event.port}")
@@ -372,6 +372,30 @@ object ServerController {
 
     private fun command(name: String): JSONObject = JSONObject().put("cmd", name)
 
+    /**
+     * Android resolves names through netd, not /etc/resolv.conf: a pure Go
+     * binary ends up asking [::1]:53 and every HTTPS call fails. The servers
+     * below are handed to the child process so it can resolve names again.
+     */
+    private fun dnsServers(context: Context): String {
+        val servers = LinkedHashSet<String>()
+        try {
+            val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+            val network = manager?.activeNetwork
+            val properties = network?.let { manager.getLinkProperties(it) }
+            properties?.dnsServers?.forEach { address ->
+                address.hostAddress?.takeIf { it.isNotBlank() }?.let { servers.add(it) }
+            }
+        } catch (e: Exception) {
+            // sem rede ativa: cai nos servidores publicos abaixo
+        }
+        if (servers.isEmpty()) {
+            servers.add("1.1.1.1")
+            servers.add("8.8.8.8")
+        }
+        return servers.joinToString(",")
+    }
+
     private fun buildArgs(context: Context, config: ServerConfig, worldDir: File): List<String> = listOf(
         "-world", worldDir.absolutePath,
         "-players", File(context.filesDir, "players").absolutePath,
@@ -385,6 +409,7 @@ object ServerController {
         "-difficulty", config.difficulty,
         "-view", config.viewDistance.toString(),
         "-gen", config.generator,
+        "-dns", dnsServers(context),
     )
 
     /**

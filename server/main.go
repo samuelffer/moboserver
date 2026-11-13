@@ -24,7 +24,7 @@ import (
 
 // appVersion is the version of the embedded server, kept in sync with the
 // Android app version by the build workflow.
-const appVersion = "1.0.4"
+const appVersion = "1.0.5"
 
 // options holds every command line flag the Android app passes to the server
 // process. Everything is explicit: the process never reads a config file, so
@@ -43,6 +43,7 @@ type options struct {
 	ViewDistance int
 	Gen          string
 	Lan          bool
+	DNS          string
 	Selftest     bool
 	ShowVersion  bool
 
@@ -67,6 +68,7 @@ func parseFlags() options {
 	flag.IntVar(&o.ViewDistance, "view", 8, "maximum chunk radius (view distance) for players")
 	flag.StringVar(&o.Gen, "gen", "terrain", "world generator for new chunks: terrain or flat")
 	flag.BoolVar(&o.Lan, "lan", true, "announce the server on the local network (LAN tab)")
+	flag.StringVar(&o.DNS, "dns", "", "DNS servers for this network, comma separated (Android has no resolv.conf)")
 	flag.BoolVar(&o.Selftest, "selftest", false, "start a throw-away server, ping it and exit")
 	flag.BoolVar(&o.ShowVersion, "version", false, "print version information and exit")
 	flag.Parse()
@@ -111,6 +113,8 @@ func dragonflyVersion() string { return "0.11.6" }
 // runServer configures, starts and supervises the Minecraft server until ctx is
 // cancelled. It returns only after the world has been saved and closed.
 func runServer(ctx context.Context, opts options, log *slog.Logger, stop context.CancelFunc) error {
+	setupResolver(strings.Split(opts.DNS, ","))
+
 	for _, dir := range []string{opts.DataDir, opts.PlayersDir, opts.World} {
 		if dir == "" {
 			continue
@@ -161,6 +165,11 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 		return fmt.Errorf("não foi possível abrir o mundo (arquivo incompatível ou corrompido): %w", err)
 	}
 	conf.AuthDisabled = !opts.Auth
+	if opts.Auth && !xboxAuthReachable(ctx, protocol.CurrentVersion) {
+		emitLog("warn", "Sem acesso ao serviço de login do Xbox Live: o servidor vai abrir SEM verificação de conta. "+
+			"Quem tiver o endereço e a porta consegue entrar (bom para jogar com amigos).")
+		conf.AuthDisabled = true
+	}
 	conf.Allower = &banAllower{bans: bans}
 	conf.Generator = generatorFor(opts.Gen)
 	conf.SaveInterval = 2 * time.Minute
@@ -223,6 +232,7 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 		"max":      opts.MaxPlayers,
 		"gen":      opts.Gen,
 		"imported": imported,
+		"auth":     !conf.AuthDisabled,
 	})
 	emitLog("info", fmt.Sprintf("Servidor de Minecraft Bedrock %s (protocolo %d) escutando na porta UDP %d",
 		protocol.CurrentVersion, protocol.CurrentProtocol, opts.Port))

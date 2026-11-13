@@ -119,6 +119,21 @@ fun HomeScreen(
             }
         }
 
+        if (running && state.info?.authEnabled == false) {
+            Spacer(Modifier.height(12.dp))
+            MoboCard(color = Color(0xFF2A2410), borderColor = Color(0xFF5C4A1E)) {
+                SectionTitle("Sem verificação de conta", modifier = Modifier)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "O serviço de login do Xbox Live não respondeu, então o servidor abriu em modo aberto: " +
+                        "qualquer pessoa com o endereço e a porta entra, inclusive de outras plataformas. " +
+                        "Se quiser exigir conta da Microsoft, tente novamente em outra rede.",
+                    color = MoboColors.Warning,
+                    fontSize = 12.sp,
+                )
+            }
+        }
+
         Spacer(Modifier.height(12.dp))
         PlayersCard(
             players = state.players,

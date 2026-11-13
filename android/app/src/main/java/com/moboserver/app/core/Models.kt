@@ -23,6 +23,7 @@ data class ServerInfo(
     val mcVersion: String,
     val protocol: Int,
     val maxPlayers: Int,
+    val authEnabled: Boolean = true,
 )
 
 /** State of the "can my friends reach this?" checks. */
