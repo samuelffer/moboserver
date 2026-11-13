@@ -70,7 +70,7 @@ jobs:
             echo "Commit: ${GITHUB_SHA}"
             echo "Data: $(date -u +%FT%TZ)"
             echo
-            grep -E "^ok |selftest:|SELFTEST OK|Listener (RakNet|NetherNet)" /tmp/go-check.log 2>/dev/null || true
+            grep -E "^ok |selftest:|SELFTEST OK|Listener |Sinalizacao NetherNet|ICE (ok|falhou)|Interfaces repassadas" /tmp/go-check.log 2>/dev/null || true
           } > docs/test-evidence.txt
           cat docs/test-evidence.txt
 

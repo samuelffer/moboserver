@@ -61,6 +61,24 @@ qualquer rede - inclusive quando o celular esta atras de CGNAT, porque quem
 inicia a conexao e o celular. Sem relay, LAN e redirecionamento de porta
 continuam funcionando normalmente.
 
+Entrada pelo endereco (cartao na tela inicial)
+----------------------------------------------
+Quando o servidor liga, o app verifica cada etapa separadamente e mostra no
+cartao "Entrada pelo endereco":
+
+  Servidor RakNet (UDP 19132) ..... o servidor responde aos pings do jogo
+  Sinalizacao HTTP (GET /v1/join) . o cliente que digita o endereco recebe o
+                                    nome e a versao do servidor
+  Negociacao ICE .................. o servidor consegue montar a conexao e
+                                    listar os enderecos locais
+  Entrada no mundo ................ nao verificada: so o Minecraft, conectando
+                                    de verdade, comprova isso
+
+Se a "Negociacao ICE" aparecer em vermelho, o problema esta no proprio aparelho
+e o app mostra o texto do erro. Se as tres primeiras estiverem verdes e o jogo
+nao entrar, o problema esta entre os dois aparelhos (rede, firewall ou versao do
+Minecraft) - nao no servidor.
+
 Versao do Minecraft e NetherNet
 -------------------------------
 O servidor fala Bedrock 1.26.60 (protocolo 2225). O cliente precisa ser

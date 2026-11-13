@@ -33,7 +33,7 @@ processo nativo do próprio app:
 * **Segundo plano**: serviço em primeiro plano + wake lock + Wi-Fi lock, com notificação
   permanente mostrando jogadores e porta.
 
-## Recursos da versão 1.2.1
+## Recursos da versão 1.3.0
 
 | Recurso | Detalhe |
 | --- | --- |
@@ -60,9 +60,9 @@ processo nativo do próprio app:
 
 | Arquivo | Tamanho | SHA-256 |
 | --- | --- | --- |
-| [`releases_apk/MoboServer-v1.2.1-android-arm64.zip`](releases_apk/MoboServer-v1.2.1-android-arm64.zip) | 18,5 MB | `d635903d23633ac3fed9c9e97359b1f336e0979c4e9d107aead8b79778ed0b35` |
+| [`releases_apk/MoboServer-v1.3.0-android-arm64.zip`](releases_apk/MoboServer-v1.3.0-android-arm64.zip) | 18,8 MB | `7e83e0320e36fcba89b62d8af12dda6ce40ad67e8aa9d7d93adbb885a3ca3cbb` |
 
-O ZIP contém `MoboServer-v1.2.1.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
+O ZIP contém `MoboServer-v1.3.0.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
 (`apksigner verify` roda no CI) e as próximas versões instalam por cima desta.
 
 ## Instalação
@@ -71,7 +71,7 @@ Copie o APK do ZIP para o celular e abra o arquivo — o Android vai pedir permi
 instalar apps de fontes desconhecidas. Para conferir o download, compare o SHA-256 acima:
 
 ```bash
-sha256sum MoboServer-v1.2.1-android-arm64.zip
+sha256sum MoboServer-v1.3.0-android-arm64.zip
 ```
 
 ## Quem consegue entrar
@@ -216,6 +216,32 @@ validação final é a primeira execução no seu celular. Se algo falhar, o con
 a mensagem de erro do servidor.
 
 ## Changelog
+
+### 1.3.0
+
+* **Correção do NetherNet no Android** (o cliente 26.63 chegava a `GET /v1/join`,
+  mandava o `POST /v1/join/<id>` e o servidor morria em
+  `create peer connection: nethernet: obtain local ICE parameters: failed to
+  create network: route ip+net: netlinkrib: permission denied`). O Android nega
+  sockets `NETLINK_ROUTE` a aplicativos, então `net.Interfaces()` falha e o
+  agente ICE do Pion não conseguia enumerar interfaces. Agora:
+  * o app enumera as interfaces com `java.net.NetworkInterface` e grava
+    `filesDir/net/ifaces.json` (`core/IfaceReporter.kt`), reescrevendo a cada 15 s;
+  * o processo Go lê esse arquivo e entrega a lista ao Pion como
+    `transport.Net` injetado em `webrtc.SettingEngine.SetNet`
+    (`server/icenet.go`), sem root e sem `InsecureSkipVerify`;
+  * o listener NetherNet passou a ser criado pelo app
+    (`server/nethernet.go`) via `Config.Listeners` + `nethernet.ListenConfig{API}`,
+    porque o `NetherNetConfig` do Dragonfly monta o `SettingEngine` por dentro.
+* **Sinalização ≠ negociação**: `waitForSignaling` agora exige HTTP 200,
+  `Content-Type: application/json` e status com nome e protocolo do servidor
+  (`/v1/join` vazio antes do pong era aceito por engano). Novo
+  `checkICEGathering` cria o agente ICE e conta os candidatos, e o cartão
+  "Entrada pelo endereço" mostra RakNet, sinalização, ICE e — explicitamente —
+  que a entrada no mundo só o cliente Bedrock comprova.
+* Testes novos: interfaces injetadas, coleta de ICE pela lista injetada, SDP,
+  faixa de portas e chave P-384. O self-test falha se a sinalização ou o ICE não
+  funcionarem.
 
 ### 1.2.1
 

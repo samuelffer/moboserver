@@ -96,6 +96,29 @@ stream {
 
 No app: **Relay** = `relay.exemplo.com:9443`, **Usar TLS** ligado.
 
+## NetherNet: ainda não atendido por este relay
+
+O túnel descrito acima encaminha **um fluxo UDP** (a porta do jogo, 19132), o que
+atende a descoberta e o RakNet. A entrada por endereço do cliente atual usa
+NetherNet, que tem duas partes:
+
+1. **sinalização** — HTTP em TCP na mesma porta do jogo (`GET /v1/join`,
+   `POST /v1/join/<id>`). Hoje não há encaminhamento TCP no relay;
+2. **mídia** — WebRTC/ICE em UDP nas portas `19133-19140`
+   (`-nethernet-ports`), uma por conexão, além do que o servidor anuncia no SDP.
+
+Para publicar MoboServer para outra rede por esse caminho é preciso: encaminhar
+o TCP da sinalização pelo relay (mesmo token/handshake), abrir a faixa UDP de
+mídia e anunciar credenciais STUN/TURN no handler de sinalização (o
+`endpoint.HandlerConfig.Credentials`, que o MoboServer hoje deixa vazio). Também
+é preciso um TURN para o caso de o ICE não conseguir um par direto — cenário
+típico de CGNAT.
+
+Nada disso foi validado ainda: **o app não deve anunciar acesso externo por
+NetherNet até que a entrada no mundo por esse caminho seja comprovada com um
+cliente real em outra rede.** O campo "Acesso pela internet" da tela inicial
+continua valendo apenas para o caminho RakNet.
+
 ## Limites desta versão
 
 * Tokens são **estáticos** (sem provisionamento automático por sessão). Um

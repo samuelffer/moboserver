@@ -56,14 +56,17 @@ O app agora sobe **dois transportes na mesma porta**:
 * **NetherNet (TCP 19132)** — sinalização HTTP em `/v1/join`, usada por clientes
   atuais antes de cair no RakNet (mídia em UDP 19133-19140).
 
-Para conferir que a sinalização responde, no PC:
+A sinalização responde com um JSON que traz o nome e o protocolo do servidor
+(é o mesmo dado que o cliente usa antes de negociar a conexão). No PC:
 
 ```powershell
 (Invoke-WebRequest -UseBasicParsing "http://192.168.1.106:19132/v1/join").StatusCode
 ```
 
-Qualquer código HTTP (200, 400, 405) significa **a sinalização está no ar**.
-"Unable to connect" significa que a porta TCP não está aberta/acesível.
+Um `200` significa que o endpoint está no ar. `200` sozinho não quer dizer que
+a negociação funciona: no aparelho, o app também cria o agente ICE e conta os
+candidatos (cartão "Entrada pelo endereço"). "Unable to connect" significa que a
+porta TCP não está aberta ou acessível.
 
 O app não usa HTTPS ali (não tem certificado de domínio público), então o cliente
 pode pedir confirmação de confiança na primeira conexão — aceite para entrar.
