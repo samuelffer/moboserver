@@ -33,7 +33,7 @@ processo nativo do próprio app:
 * **Segundo plano**: serviço em primeiro plano + wake lock + Wi-Fi lock, com notificação
   permanente mostrando jogadores e porta.
 
-## Recursos da versão 1.0
+## Recursos da versão 1.0.1
 
 | Recurso | Detalhe |
 | --- | --- |
@@ -41,7 +41,7 @@ processo nativo do próprio app:
 | Importar mundo | `.mcworld` / `.zip` exportado pelo Minecraft (via seletor de arquivos) |
 | Mundo novo | Gerador de terreno natural (colinas, praias, árvores, minérios) ou superflat |
 | Ajustes | Nome, porta, máximo de jogadores, modo de jogo, dificuldade, distância de visão, login Xbox |
-| Jogadores | Lista em tempo real, expulsar e banir (persistente por XUID) |
+| Jogadores | Lista em tempo real, expulsar e banir (persistente por XUID); desbanir em Ajustes |
 | Console | Log ao vivo, cópia do log, mensagem para todos no chat |
 | Internet | Descoberta de IP público (STUN), liberação automática de porta (UPnP) e teste de acesso externo |
 | Rede local | Endereço Wi-Fi mostrado na tela inicial |
@@ -53,10 +53,23 @@ processo nativo do próprio app:
 * Internet ativa (a validação de login do Xbox Live acontece ao iniciar).
 * Espaço livre para os mundos.
 
+## Download
+
+| Arquivo | Tamanho | SHA-256 |
+| --- | --- | --- |
+| [`releases_apk/MoboServer-v1.0.1-android-arm64.zip`](releases_apk/MoboServer-v1.0.1-android-arm64.zip) | 18,4 MB | `2a9e67a00fb29275a1e13916348b7ba7f2ec466b994bbc133d85ec15fbc6c7a9` |
+
+O ZIP contém `MoboServer-v1.0.1.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
+(`apksigner verify` roda no CI) e as próximas versões instalam por cima desta.
+
 ## Instalação
 
-Baixe o ZIP mais recente em [`releases_apk/`](releases_apk), copie o APK para o celular e
-instale (o Android vai pedir permissão para instalar apps de fontes desconhecidas).
+Copie o APK do ZIP para o celular e abra o arquivo — o Android vai pedir permissão para
+instalar apps de fontes desconhecidas. Para conferir o download, compare o SHA-256 acima:
+
+```bash
+sha256sum MoboServer-v1.0.1-android-arm64.zip
+```
 
 ## Uso
 
@@ -127,12 +140,31 @@ coloca o ZIP em `releases_apk/` e publica o artefato.
 mesma assinatura e possam ser atualizadas por cima da anterior. Não é um segredo de produção
 e não deve ser usada na Play Store.
 
+## Estado dos testes
+
+Verificado automaticamente a cada build:
+
+* servidor Go: `go vet`, binário arm64 e **self-test real** — sobe o servidor, escuta em UDP,
+  gera/recebe chunks, responde ao ping RakNet (`MCPE;...`), liga/desliga e salva o mundo;
+* geração de mundo nos dois modos (`terrain`, `flat`), importação de mundo existente e
+  recuperação de `level.dat` corrompido / porta ocupada;
+* APK: compila em release, `apksigner verify` aprova a assinatura e o CI confirma que
+  `lib/arm64-v8a/libmobosrv.so` está dentro do APK;
+* o ZIP publicado em `releases_apk/` é gerado por esse mesmo build.
+
+**Não testado em aparelho físico** durante o desenvolvimento (o ambiente de build não tem
+Android): o caminho de execução do binário, o serviço em primeiro plano, o UPnP de roteadores
+reais e o layout em telas pequenas foram escritos seguindo as APIs documentadas, mas a
+validação final é a primeira execução no seu celular. Se algo falhar, o console do app mostra
+a mensagem de erro do servidor.
+
 ## Limitações conhecidas
 
 * Provedores com CGNAT impedem acesso externo direto.
 * UPnP depende do roteador; sem ele, é preciso liberar a porta manualmente.
 * O consumo de CPU/RAM é do aparelho — celulares modestos suportam poucos jogadores.
 * Não há tunelamento embutido (por exemplo playit.gg) nesta versão.
+* Apenas `arm64-v8a` (não há build para armeabi-v7a/x86).
 
 ## Licença
 
