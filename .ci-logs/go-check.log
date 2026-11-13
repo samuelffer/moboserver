@@ -1,3 +1,5 @@
 # github.com/samuelffer/moboserver/server
 # [github.com/samuelffer/moboserver/server]
-vet: ./icenet.go:100:17: undefined: net.Flag
+vet: ./icenet.go:203:9: cannot use 1st function result (value of type *net.TCPListener) as transport.TCPListener value in return statement: *net.TCPListener does not implement transport.TCPListener (wrong type for method AcceptTCP)
+		have AcceptTCP() (*net.TCPConn, error)
+		want AcceptTCP() (transport.TCPConn, error)
