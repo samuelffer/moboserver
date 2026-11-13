@@ -1,0 +1,77 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"os"
+	"strings"
+	"sync"
+)
+
+// The server talks to the Android app over stdout using one JSON object per
+// line. Every object has a "t" field describing its type:
+//
+//	{"t":"ready","port":19132,...}
+//	{"t":"log","lvl":"info","msg":"..."}
+//	{"t":"join","name":"Steve","xuid":"123","device":"Android"}
+//	{"t":"quit","name":"Steve","xuid":"123"}
+//	{"t":"players","items":[...]}
+//	{"t":"fatal","msg":"..."}
+//	{"t":"stopped"}
+//
+// Nothing else is ever written to stdout, so the app can parse every line as
+// JSON. Stderr is redirected into stdout by the app as well.
+var emitMu sync.Mutex
+
+func emit(v any) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return
+	}
+	b = append(b, '\n')
+	emitMu.Lock()
+	_, _ = os.Stdout.Write(b)
+	emitMu.Unlock()
+}
+
+func emitLog(level, msg string) {
+	emit(map[string]any{"t": "log", "lvl": level, "msg": msg})
+}
+
+// eventHandler is a slog.Handler that forwards Dragonfly's log records to the
+// Android app as structured events.
+type eventHandler struct{}
+
+func (eventHandler) Enabled(_ context.Context, l slog.Level) bool { return l >= slog.LevelInfo }
+
+func (eventHandler) Handle(_ context.Context, r slog.Record) error {
+	msg := r.Message
+	var attrs []string
+	r.Attrs(func(a slog.Attr) bool {
+		attrs = append(attrs, fmt.Sprintf("%s=%v", a.Key, a.Value.Any()))
+		return true
+	})
+	if len(attrs) > 0 {
+		msg = msg + " (" + strings.Join(attrs, ", ") + ")"
+	}
+	emitLog(slogLevelName(r.Level), msg)
+	return nil
+}
+
+func (h eventHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h eventHandler) WithGroup(string) slog.Handler      { return h }
+
+func slogLevelName(l slog.Level) string {
+	switch {
+	case l >= slog.LevelError:
+		return "error"
+	case l >= slog.LevelWarn:
+		return "warn"
+	case l >= slog.LevelInfo:
+		return "info"
+	default:
+		return "debug"
+	}
+}

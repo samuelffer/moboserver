@@ -1,0 +1,183 @@
+package main
+
+import (
+	"context"
+	"encoding/binary"
+	"fmt"
+	"log/slog"
+	"net"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/df-mc/dragonfly/server"
+	"github.com/df-mc/dragonfly/server/block/cube"
+	"github.com/df-mc/dragonfly/server/world"
+	"github.com/df-mc/dragonfly/server/world/chunk"
+)
+
+// raknetMagic is the constant used by the RakNet handshake of Minecraft
+// Bedrock. It is required for an unconnected ping.
+var raknetMagic = []byte{0x00, 0xff, 0xff, 0x00, 0xfe, 0xfe, 0xfe, 0xfe, 0xfd, 0xfd, 0xfd, 0xfd, 0x12, 0x34, 0x56, 0x78}
+
+// runSelftest starts a throw-away server in a temporary folder, verifies that
+// the world generator produces solid terrain, pings the RakNet listener from
+// the outside and shuts everything down again. It is executed by CI on every
+// build, which catches generator and protocol regressions before an APK is
+// published.
+func runSelftest(opts options, log *slog.Logger) int {
+	dir, err := os.MkdirTemp("", "mobosrv-selftest")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "selftest: temp dir:", err)
+		return 1
+	}
+	defer os.RemoveAll(dir)
+
+	opts.World = filepath.Join(dir, "world")
+	opts.PlayersDir = filepath.Join(dir, "players")
+	opts.DataDir = dir
+	opts.BansFile = filepath.Join(dir, "bans.json")
+	opts.Name = "MoboSelfTest"
+	opts.MaxPlayers = 4
+	opts.Gen = "terrain"
+	// Xbox Live verification would require the Minecraft discovery service,
+	// which is not reachable from CI runners. Authentication is orthogonal to
+	// everything this test covers.
+	opts.Auth = false
+	opts.ignoreStdin = true
+	if opts.Port == 19132 {
+		opts.Port = 19555
+	}
+
+	if code := checkGenerator(); code != 0 {
+		return code
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ready := make(chan *server.Server, 1)
+	opts.readyHook = func(srv *server.Server) { ready <- srv }
+
+	done := make(chan error, 1)
+	go func() { done <- runServer(ctx, opts, log, cancel) }()
+
+	var srv *server.Server
+	select {
+	case srv = <-ready:
+	case err := <-done:
+		fmt.Fprintln(os.Stderr, "selftest: server did not start:", err)
+		return 1
+	case <-time.After(90 * time.Second):
+		fmt.Fprintln(os.Stderr, "selftest: timeout waiting for the server to start")
+		return 1
+	}
+
+	// Force one chunk through the real server path (this uses the generator the
+	// same way a joining player would).
+	block, err := world.Call(context.Background(), srv.World(), func(tx *world.Tx) (world.Block, error) {
+		return tx.Block(cube.Pos{0, int(surfaceHeight(0, 0)), 0}), nil
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "selftest: load chunk:", err)
+		cancel()
+		<-done
+		return 1
+	}
+	if block == nil {
+		fmt.Fprintln(os.Stderr, "selftest: chunk generation returned air at the surface")
+		cancel()
+		<-done
+		return 1
+	}
+	fmt.Fprintf(os.Stderr, "selftest: surface block at spawn: %T\n", block)
+
+	motd, err := pingServer(fmt.Sprintf("127.0.0.1:%d", opts.Port), 15*time.Second)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "selftest: raknet ping failed:", err)
+		cancel()
+		<-done
+		return 1
+	}
+	fmt.Fprintf(os.Stderr, "selftest: pong: %s\n", motd)
+	if !strings.HasPrefix(motd, "MCPE;") || !strings.Contains(motd, opts.Name) {
+		fmt.Fprintln(os.Stderr, "selftest: unexpected pong payload")
+		cancel()
+		<-done
+		return 1
+	}
+
+	cancel()
+	if err := <-done; err != nil {
+		fmt.Fprintln(os.Stderr, "selftest: shutdown:", err)
+		return 1
+	}
+	fmt.Fprintln(os.Stderr, "SELFTEST OK")
+	return 0
+}
+
+// checkGenerator generates a chunk directly and validates the result, without
+// any networking involved.
+func checkGenerator() int {
+	br := world.DefaultBlockRegistry
+	br.Finalize()
+	c := chunk.New(br, world.Overworld.Range())
+	gen := newTerrain()
+	gen.GenerateChunk(world.ChunkPos{0, 0}, c)
+
+	h := clampHeight(surfaceHeight(0, 0), int16(c.Range().Min()), int16(c.Range().Max()))
+	surface := c.Block(0, h, 0, 0)
+	if surface == 0 {
+		fmt.Fprintln(os.Stderr, "selftest: generator produced air at the surface")
+		return 1
+	}
+	if bottom := c.Block(0, int16(c.Range().Min()), 0, 0); bottom == 0 {
+		fmt.Fprintln(os.Stderr, "selftest: generator produced air at the bottom of the world")
+		return 1
+	}
+	return 0
+}
+
+// pingServer performs a RakNet unconnected ping and returns the MOTD string of
+// the server ("MCPE;name;protocol;version;players;max;...").
+func pingServer(addr string, timeout time.Duration) (string, error) {
+	conn, err := net.DialTimeout("udp", addr, timeout)
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(timeout))
+
+	pkt := make([]byte, 0, 33)
+	pkt = append(pkt, 0x01)
+	var ts [8]byte
+	binary.BigEndian.PutUint64(ts[:], uint64(time.Now().UnixNano()/int64(time.Millisecond)))
+	pkt = append(pkt, ts[:]...)
+	pkt = append(pkt, raknetMagic...)
+	var guid [8]byte
+	binary.BigEndian.PutUint64(guid[:], 0x1122334455667788)
+	pkt = append(pkt, guid[:]...)
+
+	if _, err := conn.Write(pkt); err != nil {
+		return "", err
+	}
+	buf := make([]byte, 4096)
+	for {
+		n, err := conn.Read(buf)
+		if err != nil {
+			return "", err
+		}
+		if n < 35 || buf[0] != 0x1c {
+			continue
+		}
+		length := int(binary.BigEndian.Uint16(buf[33:35]))
+		if 35+length > n {
+			length = n - 35
+		}
+		if length <= 0 {
+			return "", fmt.Errorf("empty pong")
+		}
+		return string(buf[35 : 35+length]), nil
+	}
+}

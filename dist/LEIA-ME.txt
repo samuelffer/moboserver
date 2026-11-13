@@ -1,0 +1,65 @@
+MoboServer - servidor de Minecraft Bedrock no seu celular
+=========================================================
+
+O que e este aplicativo?
+------------------------
+O MoboServer transforma o seu celular Android em um servidor de Minecraft
+Bedrock. Voce abre o app, escolhe o mundo e o servidor fica no ar enquanto o
+celular estiver ligado, com internet e com o app em execucao (pode ficar em
+segundo plano, com uma notificacao permanente).
+
+Conteudo deste ZIP
+------------------
+- MoboServer-v<versao>.apk  -> instale este arquivo no celular
+- LEIA-ME.txt               -> este arquivo
+- LICENSE                   -> licenca do projeto (MIT)
+
+Requisitos
+----------
+- Android 8.0 (API 26) ou superior, 64 bits (arm64). O Minecraft Bedrock e
+  64 bits, entao aparelhos 32 bits nao sao suportados.
+- Conexao com internet (wi-fi ou dados moveis).
+- Espaco livre em disco para o mundo (alguns MB por mundo).
+
+Como instalar
+-------------
+1. Copie o APK para o celular.
+2. Toque no arquivo e permita "instalar de fontes desconhecidas" se o Android
+   pedir.
+3. Abra o MoboServer.
+
+Primeiros passos
+----------------
+1. Em "Mundos", crie um mundo novo (terreno natural ou superflat) ou importe
+   o seu mundo do Minecraft usando "Exportar mundo" (.mcworld).
+2. Em "Ajustes", defina nome, porta, numero de jogadores, modo de jogo e
+   dificuldade.
+3. Na tela inicial, toque em "Ligar servidor".
+4. Toque em "Liberar porta" para tentar abrir a porta no roteador via UPnP.
+   Depois use "Testar acesso" para confirmar que o mundo esta acessivel pela
+   internet.
+5. Envie para os amigos o endereco mostrado (IP publico + porta). No Minecraft:
+   Jogar > Servidores > Adicionar servidor.
+
+Dicas de desempenho
+-------------------
+- Quanto mais forte o celular, mais jogadores ele suporta. Para um aparelho
+  modesto, 2 a 4 jogadores e o ideal.
+- Reduza a "distancia de visao" nos ajustes para gastar menos memoria.
+- Libere o app da otimizacao de bateria (Ajustes > Liberar bateria).
+- Mantenha o celular carregando durante sessoes longas.
+
+Limitacoes conhecidas
+---------------------
+- Alguns provedores usam CGNAT (IP compartilhado). Nesse caso o acesso externo
+  direto nao funciona e o servidor fica restrito a rede local.
+- O UPnP depende do roteador; se ele nao suportar, a porta deve ser liberada
+  manualmente.
+- O servidor precisa de internet ativa: a verificacao de login do Xbox Live
+  acontece no inicio.
+
+Licenca e creditos
+------------------
+Codigo do app e do servidor embutido: MIT (veja LICENSE).
+Servidor Minecraft Bedrock: Dragonfly (https://github.com/df-mc/dragonfly), MIT.
+Minecraft e uma marca da Mojang/Microsoft. Este projeto nao e afiliado a Mojang.
