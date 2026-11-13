@@ -61,6 +61,19 @@ jobs:
           /tmp/mobosrv -selftest -port 19132 -selftest-tunnel
           } 2>&1 | tee /tmp/go-check.log
 
+      - name: "Registrar evidencias dos testes"
+        run: |
+          set -uo pipefail
+          mkdir -p docs
+          {
+            echo "MoboServer - evidencias automatizadas do ultimo build verde"
+            echo "Commit: ${GITHUB_SHA}"
+            echo "Data: $(date -u +%FT%TZ)"
+            echo
+            grep -E "^ok |selftest:|SELFTEST OK" /tmp/go-check.log 2>/dev/null || true
+          } > docs/test-evidence.txt
+          cat docs/test-evidence.txt
+
       - name: "Servidor: compilar para Android arm64"
         working-directory: server
         run: |
@@ -248,6 +261,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f "${{ steps.package.outputs.zip }}"
+          git add -f docs/test-evidence.txt || true
           git add -f server/go.sum 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "Nada novo para publicar."
