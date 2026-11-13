@@ -20,6 +20,17 @@ sealed class ServerEvent {
         val protocol: Int,
         val maxPlayers: Int,
         val authEnabled: Boolean,
+        // Etapas verificadas separadamente pelo servidor: abrir o listener,
+        // responder a sinalizacao e negociar ICE sao coisas diferentes.
+        val raknetOk: Boolean = false,
+        val signalingOk: Boolean = false,
+        val signalingName: String = "",
+        val signalingProtocol: Int = 0,
+        val iceOk: Boolean = false,
+        val iceCandidates: Int = 0,
+        val iceHosts: List<String> = emptyList(),
+        val iceInterfaceCount: Int = 0,
+        val iceError: String = "",
     ) : ServerEvent()
     data class Log(val level: String, val message: String) : ServerEvent()
     data class Lan(val targets: List<LanTarget>) : ServerEvent()
@@ -113,15 +124,42 @@ class ServerProcess(
 
         when (obj.optString("t")) {
             "log" -> listener(ServerEvent.Log(obj.optString("lvl", "info"), obj.optString("msg")))
-            "ready" -> listener(
-                ServerEvent.Ready(
-                    port = obj.optInt("port"),
-                    version = obj.optString("version"),
-                    protocol = obj.optInt("protocol"),
-                    maxPlayers = obj.optInt("max"),
-                    authEnabled = obj.optBoolean("auth", true),
+            "ready" -> {
+                val signaling = obj.optJSONObject("signaling")
+                val ice = obj.optJSONObject("ice")
+                val hosts = ArrayList<String>()
+                ice?.optJSONArray("hosts")?.let { array ->
+                    for (index in 0 until array.length()) {
+                        val host = array.optString(index)
+                        if (host.isNotBlank()) hosts.add(host)
+                    }
+                }
+                val interfaces = ArrayList<String>()
+                ice?.optJSONArray("interfaces")?.let { array ->
+                    for (index in 0 until array.length()) {
+                        val entry = array.optString(index)
+                        if (entry.isNotBlank()) interfaces.add(entry)
+                    }
+                }
+                listener(
+                    ServerEvent.Ready(
+                        port = obj.optInt("port"),
+                        version = obj.optString("version"),
+                        protocol = obj.optInt("protocol"),
+                        maxPlayers = obj.optInt("max"),
+                        authEnabled = obj.optBoolean("auth", true),
+                        raknetOk = obj.optBoolean("raknet", false),
+                        signalingOk = (signaling?.optInt("status") ?: 0) == 200,
+                        signalingName = signaling?.optString("name").orEmpty(),
+                        signalingProtocol = signaling?.optInt("protocol") ?: 0,
+                        iceOk = ice?.optBoolean("ok", false) ?: false,
+                        iceCandidates = ice?.optInt("candidates") ?: 0,
+                        iceHosts = hosts,
+                        iceInterfaceCount = interfaces.size,
+                        iceError = ice?.optString("error").orEmpty(),
+                    ),
                 )
-            )
+            }
             "lan" -> {
                 val array = obj.optJSONArray("targets")
                 val targets = ArrayList<LanTarget>()

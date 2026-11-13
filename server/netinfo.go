@@ -1,12 +1,16 @@
 package main
 
 import (
-	"bufio"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pion/transport/v5"
 )
 
 // lanTarget describes one local address the server may be reachable on. The app
@@ -20,10 +24,13 @@ type lanTarget struct {
 
 // localIPv4s lists every non-loopback, non-link-local IPv4 of the device,
 // preferring Wi-Fi/hotspot interfaces first so the UI shows the useful one.
-func localIPv4s() []lanTarget {
+// It reads the interfaces through the same transport.Net the ICE agent uses:
+// on Android net.Interfaces() is blocked, so asking the standard library here
+// would silently report "no addresses" while the server is perfectly reachable.
+func localIPv4s(network transport.Net) []lanTarget {
 	preferred := make([]lanTarget, 0, 4)
 	others := make([]lanTarget, 0, 4)
-	ifaces, err := net.Interfaces()
+	ifaces, err := network.Interfaces()
 	if err != nil {
 		return nil
 	}
@@ -68,33 +75,90 @@ func probeInterfaces(port int, targets []lanTarget) []lanTarget {
 	return targets
 }
 
-// waitForSignaling verifies that the NetherNet HTTP signaling endpoint answers on
-// the game port. Clients that join by address ask for /v1/join there (HTTPS
-// first, plaintext HTTP on the same port) before falling back to RakNet, so an
-// endpoint that silently drops packets is what makes the client sit on
-// "localizando servidor" for a long time.
-func waitForSignaling(port int, timeout time.Duration) error {
-	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+// signallingInfo is what GET /v1/join answered. Status 200 alone only proves
+// that something speaks HTTP on the port, so the status document (name,
+// protocol, version) is parsed as well: it is the same JSON the Bedrock client
+// receives when it probes the server by address.
+type signallingInfo struct {
+	Status   int    `json:"status"`
+	Name     string `json:"name,omitempty"`
+	Protocol int    `json:"protocol,omitempty"`
+	Version  string `json:"version,omitempty"`
+	Players  int    `json:"players,omitempty"`
+	Max      int    `json:"max,omitempty"`
+	Body     string `json:"body,omitempty"`
+}
+
+// waitForSignaling verifies the NetherNet signaling endpoint on the game port.
+// Clients that join by address ask for /v1/join there (HTTPS first, plaintext
+// HTTP on the same port) before falling back to RakNet. The check requires
+// status 200, a JSON content type and a status document with the server name and
+// protocol: an endpoint that answers with an empty body, an error page or a
+// redirect is not usable and used to pass this check silently.
+func waitForSignaling(port int, timeout time.Duration) (signallingInfo, error) {
+	url := fmt.Sprintf("http://127.0.0.1:%d/v1/join", port)
+	client := &http.Client{
+		Timeout: 4 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 	deadline := time.Now().Add(timeout)
-	var lastErr error = fmt.Errorf("porta nao aceitou conexao")
+	info := signallingInfo{}
+	var lastErr error = fmt.Errorf("porta %d nao aceitou conexao", port)
 	for time.Now().Before(deadline) {
-		conn, err := net.DialTimeout("tcp", addr, 1500*time.Millisecond)
+		resp, err := client.Get(url)
 		if err != nil {
 			lastErr = err
 			time.Sleep(300 * time.Millisecond)
 			continue
 		}
-		_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
-		request := "GET /v1/join HTTP/1.1\r\nHost: " + addr + "\r\nUser-Agent: MoboServer\r\nConnection: close\r\n\r\n"
-		_, _ = conn.Write([]byte(request))
-		reader := bufio.NewReader(conn)
-		line, readErr := reader.ReadString('\n')
-		_ = conn.Close()
-		if readErr == nil && strings.HasPrefix(line, "HTTP/") {
-			return nil
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+		_ = resp.Body.Close()
+		info.Status = resp.StatusCode
+		info.Body = strings.TrimSpace(string(body))
+		if readErr != nil {
+			lastErr = fmt.Errorf("ler resposta de /v1/join: %w", readErr)
+			time.Sleep(300 * time.Millisecond)
+			continue
 		}
-		lastErr = fmt.Errorf("resposta inesperada em /v1/join: %q", strings.TrimSpace(line))
-		time.Sleep(300 * time.Millisecond)
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("/v1/join respondeu HTTP %d: %q", resp.StatusCode, info.Body)
+			time.Sleep(300 * time.Millisecond)
+			continue
+		}
+		if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "application/json") {
+			lastErr = fmt.Errorf("/v1/join respondeu 200 sem JSON (Content-Type %q)", ct)
+			time.Sleep(300 * time.Millisecond)
+			continue
+		}
+		var status struct {
+			Name           string `json:"name"`
+			Protocol       int    `json:"protocol"`
+			Version        string `json:"version"`
+			Players        int    `json:"players"`
+			MaxPlayerCount int    `json:"maxPlayers"`
+		}
+		if len(body) == 0 {
+			// The handler answers 200 with an empty body until the game listener
+			// has published its pong data; keep waiting instead of accepting it.
+			lastErr = fmt.Errorf("/v1/join respondeu 200 com corpo vazio (status do servidor ainda nao publicado)")
+			time.Sleep(300 * time.Millisecond)
+			continue
+		}
+		if err := json.Unmarshal(body, &status); err != nil {
+			lastErr = fmt.Errorf("/v1/join respondeu 200 com corpo que nao e JSON: %q", info.Body)
+			time.Sleep(300 * time.Millisecond)
+			continue
+		}
+		if status.Name == "" || status.Protocol == 0 {
+			lastErr = fmt.Errorf("/v1/join respondeu 200 sem nome/protocolo do servidor: %q", info.Body)
+			time.Sleep(300 * time.Millisecond)
+			continue
+		}
+		info.Name, info.Protocol, info.Version = status.Name, status.Protocol, status.Version
+		info.Players, info.Max = status.Players, status.MaxPlayerCount
+		return info, nil
 	}
-	return fmt.Errorf("sem sinalizacao em TCP %s: %w", addr, lastErr)
+	return info, fmt.Errorf("sinalizacao NetherNet em %s nao ok: %w", url, lastErr)
 }

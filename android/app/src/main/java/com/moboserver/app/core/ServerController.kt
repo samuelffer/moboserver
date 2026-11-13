@@ -140,6 +140,23 @@ object ServerController {
         // spawn a process after the app already reported "desligado".
         if (!isCurrent(s)) return
 
+        // Sem esta lista o Pion tenta enumerar interfaces pelo netlink, o que o
+        // Android nega, e toda conexao NetherNet morre em
+        // "netlinkrib: permission denied".
+        val ifaces = IfaceReporter.write(context)
+        if (ifaces == null) {
+            appendLog(
+                "warn",
+                "Não foi possível listar as interfaces de rede do aparelho: " +
+                    "a negociação por endereço (NetherNet) deve falhar.",
+            )
+        } else {
+            appendLog(
+                "info",
+                "Interfaces repassadas ao ICE: ${ifaces.interfaces} utilizável(is) — ${ifaces.summary}",
+            )
+        }
+
         val process = ServerProcess(
             binary = binary,
             workDir = context.filesDir,
@@ -150,6 +167,7 @@ object ServerController {
         s.process = process
         try {
             process.start()
+            IfaceReporter.startWatching(context) { process.isAlive }
         } catch (e: Exception) {
             Log.e(TAG, "failed to start server", e)
             if (isCurrent(s)) {
@@ -442,11 +460,39 @@ object ServerController {
                             protocol = event.protocol,
                             maxPlayers = event.maxPlayers,
                             authEnabled = event.authEnabled,
+                            raknetOk = event.raknetOk,
+                            signalingOk = event.signalingOk,
+                            signalingName = event.signalingName,
+                            iceOk = event.iceOk,
+                            iceCandidates = event.iceCandidates,
+                            iceHosts = event.iceHosts,
+                            iceInterfaceCount = event.iceInterfaceCount,
+                            iceError = event.iceError,
                         ),
                         error = null,
                     )
                 }
                 appendLog("info", "Servidor iniciado no celular • Minecraft Bedrock ${event.version} • porta ${event.port}")
+                appendLog(
+                    if (event.signalingOk) "info" else "error",
+                    if (event.signalingOk) {
+                        "Sinalização NetherNet: GET /v1/join respondeu 200 (nome \"${event.signalingName}\", " +
+                            "protocolo ${event.signalingProtocol})"
+                    } else {
+                        "Sinalização NetherNet: o endpoint HTTP não respondeu — quem entrar pelo endereço " +
+                            "vai cair no RakNet depois de esperar"
+                    },
+                )
+                appendLog(
+                    if (event.iceOk) "info" else "error",
+                    if (event.iceOk) {
+                        "Negociação ICE: ${event.iceCandidates} candidato(s) local(is) em " +
+                            "${event.iceHosts.joinToString(", ").ifBlank { "?" }} " +
+                            "(${event.iceInterfaceCount} endereço(s) de interface repassados do Android)"
+                    } else {
+                        "Negociação ICE falhou: ${event.iceError.ifBlank { "sem detalhes" }}"
+                    },
+                )
                 startProbePage(s, event.port, event.version, event.protocol, event.maxPlayers, event.authEnabled)
                 refreshExposure(forward = Store.config.value.autoForward)
             }
@@ -641,6 +687,9 @@ object ServerController {
         "-view", config.viewDistance.toString(),
         "-gen", config.generator,
         "-dns", dnsServers(context),
+        // Android bloqueia netlink: a lista de interfaces vem das APIs Java
+        // (IfaceReporter) e e injetada no agente ICE do Pion.
+        "-ifaces", IfaceReporter.path(context).absolutePath,
     ) + tunnelArgs(config)
 
     /** Extra flags for the optional reverse tunnel (empty when not configured). */

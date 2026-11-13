@@ -137,6 +137,9 @@ fun HomeScreen(
         }
 
         Spacer(Modifier.height(12.dp))
+        NegotiationCard(state = state, running = running, port = port)
+
+        Spacer(Modifier.height(12.dp))
         PlayersCard(
             players = state.players,
             maxPlayers = maxPlayers,
@@ -743,5 +746,76 @@ fun formatUptime(millis: Long): String {
         hours > 0 -> "online há ${hours}h ${minutes}min"
         minutes > 0 -> "online há ${minutes}min"
         else -> "online há ${seconds}s"
+    }
+}
+/**
+ * Mostra as etapas da entrada por endereco separadamente. Responder HTTP nao e o
+ * mesmo que negociar a conexao, e nenhuma das duas coisas prova que o cliente
+ * entrou no mundo: apenas o Bedrock, conectando de verdade, prova isso.
+ */
+@Composable
+private fun NegotiationCard(state: RuntimeState, running: Boolean, port: Int) {
+    val info = state.info
+    MoboCard {
+        SectionTitle("Entrada pelo endereço")
+        Spacer(Modifier.height(8.dp))
+        if (!running || info == null) {
+            Text(
+                "Ligue o servidor para ver as etapas de entrada por endereço.",
+                color = MoboColors.TextSecondary,
+                fontSize = 13.sp,
+            )
+            return@MoboCard
+        }
+        StageLine(
+            label = "Servidor RakNet (UDP $port)",
+            ok = info.raknetOk,
+            detail = if (info.raknetOk) "escutando (descoberta e jogo)" else "não abriu a porta",
+        )
+        Spacer(Modifier.height(6.dp))
+        StageLine(
+            label = "Sinalização HTTP (GET /v1/join)",
+            ok = info.signalingOk,
+            detail = if (info.signalingOk) {
+                "200 • nome \"${info.signalingName}\""
+            } else {
+                "sem resposta — quem digitar o endereço demora e cai no RakNet"
+            },
+        )
+        Spacer(Modifier.height(6.dp))
+        StageLine(
+            label = "Negociação ICE",
+            ok = info.iceOk,
+            detail = if (info.iceOk) {
+                "${info.iceCandidates} candidato(s) local(is) em " +
+                    info.iceHosts.joinToString(", ").ifBlank { "?" } +
+                    " • ${info.iceInterfaceCount} endereço(s) de interface injetados"
+            } else {
+                info.iceError.ifBlank { "não foi possível criar o agente ICE" }
+            },
+        )
+        Spacer(Modifier.height(6.dp))
+        StageLine(
+            label = "Entrada no mundo",
+            ok = null,
+            detail = "só o cliente Bedrock comprova: adicionar o endereço do celular na porta $port e entrar",
+        )
+    }
+}
+
+@Composable
+private fun StageLine(label: String, ok: Boolean?, detail: String) {
+    val color = when (ok) {
+        true -> MoboColors.Lime
+        false -> MoboColors.Danger
+        null -> MoboColors.TextSecondary
+    }
+    Row(verticalAlignment = Alignment.Top) {
+        StatusDot(color, 8)
+        Spacer(Modifier.width(8.dp))
+        Column {
+            Text(label, color = MoboColors.TextPrimary, fontSize = 13.sp)
+            Text(detail, color = MoboColors.TextSecondary, fontSize = 12.sp)
+        }
     }
 }

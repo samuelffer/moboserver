@@ -19,12 +19,13 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/df-mc/dragonfly/server/world/biome"
 	"github.com/df-mc/dragonfly/server/world/generator"
+	"github.com/sandertv/gophertunnel/minecraft"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
 // appVersion is the version of the embedded server, kept in sync with the
 // Android app version by the build workflow.
-const appVersion = "1.2.1"
+const appVersion = "1.3.0"
 
 // options holds every command line flag the Android app passes to the server
 // process. Everything is explicit: the process never reads a config file, so
@@ -49,6 +50,7 @@ type options struct {
 	AllowOpen      bool
 	NetherNet      bool
 	NetherNetPorts string
+	IfaceFile      string
 	Selftest     bool
 	SelftestTunnel bool
 	ShowVersion  bool
@@ -80,6 +82,9 @@ func parseFlags() options {
 		"also listen on the NetherNet transport (clients joining by address probe it first)")
 	flag.StringVar(&o.NetherNetPorts, "nethernet-ports", "19133-19140",
 		"UDP ports used by NetherNet player connections")
+	flag.StringVar(&o.IfaceFile, "ifaces", "",
+		"JSON file with the interface list written by the Android app "+
+			"(netlink is blocked for apps on Android, so ICE cannot enumerate interfaces itself)")
 	flag.StringVar(&o.Tunnel, "tunnel", "", "relay host:port of the reverse UDP tunnel (empty disables it)")
 	flag.StringVar(&o.TunnelToken, "tunnel-token", "", "token accepted by the tunnel relay")
 	flag.BoolVar(&o.TunnelTLS, "tunnel-tls", true, "use TLS for the tunnel control connection")
@@ -168,15 +173,12 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	// jogo (e em 443/80 quando a porta e 19132) e so depois caem para o RakNet.
 	// Se ninguem responde, a sondagem demora e o cliente fica em "localizando
 	// servidor"; por isso o NetherNet tambem e servido, na mesma porta do jogo.
-	if opts.NetherNet {
-		uc.Network.Transport = []string{"raknet", "nethernet"}
-		uc.Network.NetherNet.Address = fmt.Sprintf("0.0.0.0:%d", opts.Port)
-		uc.Network.NetherNet.KeyFile = filepath.Join(opts.DataDir, "keys", "server_identity_key.pem")
-		uc.Network.NetherNet.Domain = "self"
-		uc.Network.NetherNet.UDPPorts = opts.NetherNetPorts
-	} else {
-		uc.Network.Transport = []string{"raknet"}
-	}
+	// RakNet (UDP) e o transporte historico. O NetherNet e montado em
+	// server/nethernet.go (Config.Listeners) e nao pelo Dragonfly: aquele caminho
+	// cria o webrtc.SettingEngine internamente e nao permite entregar a lista de
+	// interfaces do Android ao Pion, que no aparelho falha com
+	// "netlinkrib: permission denied" ao criar o agente ICE.
+	uc.Network.Transport = []string{"raknet"}
 	uc.Server.Name = opts.Name
 	uc.Server.AuthEnabled = opts.Auth
 	uc.World.SaveData = true
@@ -213,6 +215,39 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	conf.SaveInterval = 2 * time.Minute
 	conf.ChunkUnloadInterval = 2 * time.Minute
 	conf.DisableResourceBuilding = true
+
+	// Transportes. RakNet cobre descoberta e jogo em UDP; NetherNet serve a
+	// sinalizacao HTTP na mesma porta (GET /v1/join) e a midia WebRTC nos portos
+	// UDP configurados. Os dois usam a mesma implementacao de rede para ICE.
+	iceNet := newICENetwork(opts.IfaceFile)
+	address := fmt.Sprintf("0.0.0.0:%d", opts.Port)
+	var udpMin, udpMax uint16
+	if opts.NetherNet {
+		var perr error
+		udpMin, udpMax, perr = parsePortRange(opts.NetherNetPorts)
+		if perr != nil {
+			return fmt.Errorf("faixa de portas do NetherNet invalida: %w", perr)
+		}
+	}
+	conf.Listeners = []func(server.Config) (server.Listener, error){
+		func(c server.Config) (server.Listener, error) {
+			return server.ListenNetwork(c, minecraft.RakNet{}, address)
+		},
+	}
+	if opts.NetherNet {
+		conf.Listeners = append(conf.Listeners, func(c server.Config) (server.Listener, error) {
+			return startNetherNet(c, netherNetOptions{
+				Address:        address,
+				KeyFile:        filepath.Join(opts.DataDir, "keys", "server_identity_key.pem"),
+				Domain:         "self",
+				UDPPortsMin:    udpMin,
+				UDPPortsMax:    udpMax,
+				AllowAnonymous: c.AuthDisabled,
+				Network:        iceNet,
+				Log:            log,
+			})
+		})
+	}
 
 	srv := conf.New()
 	srv.Listen()
@@ -265,18 +300,33 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	} else {
 		emitLog("error", "Listener RakNet falhou: "+raknetErr.Error())
 	}
-	var netherErr error
+	var (
+		signalling signallingInfo
+		signErr    error
+		iceRep     iceReport
+	)
 	if opts.NetherNet {
-		netherErr = waitForSignaling(opts.Port, 10*time.Second)
-		if netherErr == nil {
-			emitLog("info", fmt.Sprintf("Listener NetherNet ativo: sinalizacao HTTP em TCP :%d, midia UDP %s",
-				opts.Port, opts.NetherNetPorts))
+		signalling, signErr = waitForSignaling(opts.Port, 12*time.Second)
+		if signErr == nil {
+			emitLog("info", fmt.Sprintf("Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em TCP :%d "+
+				"(nome %q, protocolo %d, versao %s)", opts.Port, signalling.Name, signalling.Protocol, signalling.Version))
+			emitLog("info", fmt.Sprintf("Nome que o cliente recebe ao digitar o endereco: %q", signalling.Name))
 		} else {
-			emitLog("warn", "Listener NetherNet indisponível: "+netherErr.Error()+
-				" (clientes que entram por endereco vao demorar mais para cair no RakNet)")
+			emitLog("error", "Sinalizacao NetherNet falhou: "+signErr.Error())
+		}
+
+		// Responder HTTP nao e negociar: aqui o agente ICE e criado e os
+		// candidatos sao coletados de verdade, que era o passo que falhava no
+		// Android por causa do netlink bloqueado.
+		iceRep = checkICEGathering(ctx, iceNet, udpMin, udpMax, 12*time.Second)
+		if iceRep.OK {
+			emitLog("info", fmt.Sprintf("ICE ok: %d candidato(s) UDP, host em %s (interfaces: %s)",
+				iceRep.Candidates, describeCandidateHosts(iceRep.Hosts), strings.Join(iceRep.Interfaces, ", ")))
+		} else {
+			emitLog("error", "ICE falhou, a negociacao NetherNet nao vai completar: "+iceRep.Error)
 		}
 	}
-	if raknetErr != nil && (netherErr != nil || !opts.NetherNet) {
+	if raknetErr != nil && (signErr != nil || !opts.NetherNet) {
 		_ = srv.Close()
 		return fmt.Errorf("nenhum transporte abriu a porta: %v", raknetErr)
 	}
@@ -291,7 +341,10 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 		"gen":      opts.Gen,
 		"imported": imported,
 		"auth":      !conf.AuthDisabled,
-		"nethernet": opts.NetherNet && netherErr == nil,
+		"nethernet": opts.NetherNet && signErr == nil,
+		"raknet":    raknetErr == nil,
+		"signaling": signalling,
+		"ice":       iceRep,
 	})
 	emitLog("info", fmt.Sprintf("Servidor de Minecraft Bedrock %s (protocolo %d) escutando na porta UDP %d",
 		protocol.CurrentVersion, protocol.CurrentProtocol, opts.Port))
@@ -313,7 +366,7 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	// separa "o servidor nao esta escutando" de "a rede nao entrega o pacote",
 	// que e a duvida numero 1 de quem nao consegue conectar.
 	go func() {
-		targets := probeInterfaces(opts.Port, localIPv4s())
+		targets := probeInterfaces(opts.Port, localIPv4s(iceNet))
 		for _, target := range targets {
 			if target.OK {
 				emitLog("info", fmt.Sprintf("Servidor responde em %s:%d (%s)", target.IP, opts.Port, target.Iface))

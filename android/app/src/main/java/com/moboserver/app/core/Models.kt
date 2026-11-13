@@ -29,6 +29,15 @@ data class ServerInfo(
     val authEnabled: Boolean = true,
     val lanTargets: List<LanTarget> = emptyList(),
     val probePort: Int = 0,
+    // Etapas da entrada por endereco, verificadas pelo processo Go.
+    val raknetOk: Boolean = false,
+    val signalingOk: Boolean = false,
+    val signalingName: String = "",
+    val iceOk: Boolean = false,
+    val iceCandidates: Int = 0,
+    val iceHosts: List<String> = emptyList(),
+    val iceInterfaceCount: Int = 0,
+    val iceError: String = "",
 )
 
 /**

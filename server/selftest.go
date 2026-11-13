@@ -111,7 +111,8 @@ func runSelftest(opts options, log *slog.Logger) int {
 	// The loopback ping above only proves the socket exists. This one proves the
 	// server answers on a real interface address, which is exactly what breaks
 	// when the listen address or the socket binding is wrong.
-	if targets := localIPv4s(); len(targets) > 0 {
+	iceNet := newICENetwork(opts.IfaceFile)
+	if targets := localIPv4s(iceNet); len(targets) > 0 {
 		target := targets[0]
 		address := fmt.Sprintf("%s:%d", target.IP, opts.Port)
 		lanMotd, err := pingServer(address, 8*time.Second)
@@ -131,16 +132,37 @@ func runSelftest(opts options, log *slog.Logger) int {
 	}
 
 	// Transporte por endereco: o cliente Bedrock sonda /v1/join antes de cair no
-	// RakNet. O selftest exige que a sinalizacao esteja no ar, e nao apenas que o
-	// listener UDP tenha subido.
+	// RakNet. O selftest exige que a sinalizacao esteja no ar (HTTP 200 + status
+	// JSON com nome e protocolo), e nao apenas que o listener UDP tenha subido.
 	if opts.NetherNet {
-		if err := waitForSignaling(opts.Port, 5*time.Second); err != nil {
+		signalling, err := waitForSignaling(opts.Port, 8*time.Second)
+		if err != nil {
 			fmt.Fprintln(os.Stderr, "selftest: sinalizacao NetherNet:", err)
 			cancel()
 			<-done
 			return 1
 		}
-		fmt.Fprintf(os.Stderr, "selftest: sinalizacao NetherNet ok em TCP %d (/v1/join)\n", opts.Port)
+		fmt.Fprintf(os.Stderr, "selftest: sinalizacao NetherNet ok em TCP %d (GET /v1/join 200, nome %q, protocolo %d)\n",
+			opts.Port, signalling.Name, signalling.Protocol)
+
+		// E o passo que falhava no aparelho: criar o agente ICE e coletar
+		// candidatos. Responder HTTP nao prova nada sobre a negociacao.
+		minPort, maxPort, err := parsePortRange(opts.NetherNetPorts)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "selftest: faixa de portas do NetherNet:", err)
+			cancel()
+			<-done
+			return 1
+		}
+		rep := checkICEGathering(ctx, iceNet, minPort, maxPort, 20*time.Second)
+		if !rep.OK {
+			fmt.Fprintln(os.Stderr, "selftest: ICE:", rep.Error)
+			cancel()
+			<-done
+			return 1
+		}
+		fmt.Fprintf(os.Stderr, "selftest: ICE ok (%d candidatos via %s, host em %s)\n",
+			rep.Candidates, rep.Source, describeCandidateHosts(rep.Hosts))
 	}
 
 	if opts.SelftestTunnel {
