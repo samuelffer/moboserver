@@ -333,8 +333,8 @@ func (b *banList) persistLocked() error {
 // deviceOSName maps the numeric device id sent by the client to something the
 // player recognises. The client picks this value itself, so it is informational
 // only — never used to make security decisions.
-func deviceOSName(os protocol.DeviceOS) string {
-	switch os {
+func deviceOSName(id protocol.DeviceOS) string {
+	switch id {
 	case 1:
 		return "Android"
 	case 2:
@@ -358,7 +358,7 @@ func deviceOSName(os protocol.DeviceOS) string {
 	case 15:
 		return "Linux"
 	default:
-		return fmt.Sprintf("dispositivo %d", int(os))
+		return fmt.Sprintf("dispositivo %d", int(id))
 	}
 }
 

@@ -42,11 +42,14 @@ jobs:
       - name: "Servidor: dependencias, vet e self-test"
         working-directory: server
         run: |
-          set -euo pipefail
-          go mod tidy
-          go vet ./...
-          go build -trimpath -o /tmp/mobosrv .
-          /tmp/mobosrv -version
+          set -o pipefail
+          {
+            set -euo pipefail
+            go mod tidy
+            go vet ./...
+            go test ./...
+            go build -trimpath -o /tmp/mobosrv .
+            /tmp/mobosrv -version
           # O self-test sobe um servidor real, carrega um mundo gerado, faz um
           # ping RakNet e desliga. Falha o build se qualquer parte quebrar.
           # Descoberta LAN: o payload do "Unconnected Pong" (o que o cliente
@@ -54,6 +57,7 @@ jobs:
           # padrao quanto em uma porta personalizada.
           /tmp/mobosrv -selftest -port 19132
           /tmp/mobosrv -selftest -port 19555
+          } 2>&1 | tee /tmp/go-check.log
 
       - name: "Servidor: compilar para Android arm64"
         working-directory: server
@@ -179,6 +183,9 @@ jobs:
         run: |
           set -uo pipefail
           mkdir -p .ci-logs
+          if [ -f /tmp/go-check.log ]; then
+            cp /tmp/go-check.log .ci-logs/go-check.log
+          fi
           if [ -f /tmp/gradle.log ]; then
             tail -c 200000 /tmp/gradle.log > .ci-logs/gradle.log
             grep -nE "e: file|error:|FAILURE|What went wrong|Caused by|Execution failed" .ci-logs/gradle.log | head -40 || true
