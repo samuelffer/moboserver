@@ -114,8 +114,9 @@ object ServerController {
         } catch (e: Exception) {
             Log.e(TAG, "failed to start server", e)
             fail(
-                "Não foi possível executar o servidor neste aparelho (${e.message}). " +
-                    "Isso pode acontecer em ROMs muito restritivas.",
+                "Não foi possível executar o servidor neste aparelho.\n\n" +
+                    "Detalhe: ${e.message}\n\n" +
+                    "Abra Ajustes → Diagnóstico e use \"Testar servidor embutido\" para ver o motivo exato.",
             )
             serverProcess = null
         }

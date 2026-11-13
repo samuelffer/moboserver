@@ -57,10 +57,55 @@ jobs:
           set -euo pipefail
           OUT=../android/app/src/main/jniLibs/arm64-v8a
           mkdir -p "$OUT"
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+          # GOOS=android e obrigatorio: um PIE compilado para linux pede o
+          # loader do glibc (/lib/ld-linux-aarch64.so.1), que nao existe no
+          # Android, e o exec falha com "error=2, No such file or directory".
+          CGO_ENABLED=0 GOOS=android GOARCH=arm64 \
             go build -buildmode=pie -trimpath -ldflags="-s -w" -o "$OUT/libmobosrv.so" .
           ls -lh "$OUT/libmobosrv.so"
           file "$OUT/libmobosrv.so"
+
+      - name: "Servidor: validar o ELF para Android"
+        run: |
+          set -euo pipefail
+          SO=android/app/src/main/jniLibs/arm64-v8a/libmobosrv.so
+          python3 - "$SO" <<'PY'
+          import struct, sys
+          path = sys.argv[1]
+          data = open(path, "rb").read()
+          e_type, = struct.unpack_from("<H", data, 16)
+          e_machine, = struct.unpack_from("<H", data, 18)
+          e_phoff, = struct.unpack_from("<Q", data, 32)
+          e_phentsize, e_phnum = struct.unpack_from("<HH", data, 54)
+          interp = None
+          dyn = None
+          for i in range(e_phnum):
+              off = e_phoff + i * e_phentsize
+              p_type, = struct.unpack_from("<I", data, off)
+              p_offset, = struct.unpack_from("<Q", data, off + 8)
+              p_filesz, = struct.unpack_from("<Q", data, off + 32)
+              if p_type == 3:
+                  interp = data[p_offset:p_offset + p_filesz].split(b"\0")[0].decode()
+              if p_type == 2:
+                  dyn = (p_offset, p_filesz)
+          needed = []
+          if dyn:
+              o, size = dyn
+              for j in range(o, o + size, 16):
+                  tag, val = struct.unpack_from("<qQ", data, j)
+                  if tag == 0:
+                      break
+                  if tag == 1:
+                      needed.append(val)
+          print("e_type", e_type, "machine", e_machine, "interp", interp, "needed", len(needed))
+          if e_type != 3 or e_machine != 183:
+              sys.exit("ELF nao e um PIE aarch64")
+          if interp != "/system/bin/linker64":
+              sys.exit(f"interpretador errado: {interp!r} (esperado /system/bin/linker64)")
+          if needed:
+              sys.exit("binario com dependencias dinamicas: nao roda em Android sem essas libs")
+          PY
+          echo "ELF ok: PIE aarch64 com /system/bin/linker64 e sem dependencias"
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
