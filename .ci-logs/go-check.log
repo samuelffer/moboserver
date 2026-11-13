@@ -1,4 +1,4 @@
-ok  	github.com/samuelffer/moboserver/server	0.165s
+ok  	github.com/samuelffer/moboserver/server	0.092s
 ?   	github.com/samuelffer/moboserver/server/cmd/relay	[no test files]
 ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.234s
 === RUN   TestAvatarFaceCrop
@@ -16,9 +16,9 @@ ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.234s
 === RUN   TestAvatarHashChangesWithSkin
 --- PASS: TestAvatarHashChangesWithSkin (0.00s)
 === RUN   TestLevelDatAcceptsDottedTag
---- PASS: TestLevelDatAcceptsDottedTag (0.00s)
+--- PASS: TestLevelDatAcceptsDottedTag (0.04s)
 === RUN   TestLevelDatAcceptsEditorTag
---- PASS: TestLevelDatAcceptsEditorTag (0.00s)
+--- PASS: TestLevelDatAcceptsEditorTag (0.06s)
 === RUN   TestLevelDatWithoutExtraTagsNeedsNoFix
 --- PASS: TestLevelDatWithoutExtraTagsNeedsNoFix (0.00s)
 === RUN   TestValidateWorldCodes
@@ -27,18 +27,133 @@ ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.234s
 === RUN   TestValidateWorldCodes/importacao_incompleta
 === RUN   TestValidateWorldCodes/db_vazio
 === RUN   TestValidateWorldCodes/mundo_valido_com_tag_extra
---- PASS: TestValidateWorldCodes (0.00s)
+--- PASS: TestValidateWorldCodes (0.02s)
     --- PASS: TestValidateWorldCodes/arquivo_invalido (0.00s)
     --- PASS: TestValidateWorldCodes/level.dat_truncado (0.00s)
     --- PASS: TestValidateWorldCodes/importacao_incompleta (0.00s)
     --- PASS: TestValidateWorldCodes/db_vazio (0.00s)
-    --- PASS: TestValidateWorldCodes/mundo_valido_com_tag_extra (0.00s)
+    --- PASS: TestValidateWorldCodes/mundo_valido_com_tag_extra (0.02s)
 === RUN   TestNbtSkipRejectsTruncated
 --- PASS: TestNbtSkipRejectsTruncated (0.00s)
 PASS
-ok  	github.com/samuelffer/moboserver/server	0.088s
+ok  	github.com/samuelffer/moboserver/server	0.205s
 mobosrv 1.3.0 dragonfly 0.11.6 bedrock 1.26.60 protocol 2225
 {"lvl":"warn","msg":"Não encontrei os certificados do Android: conexões HTTPS podem falhar (validação de certificado continua ativa).","t":"log"}
 {"lvl":"info","msg":"Nenhum mundo encontrado: um novo mundo sera gerado.","t":"log"}
 {"lvl":"info","msg":"Gerador selecionado: terreno natural","t":"log"}
-selftest: server did not start: o mundo não tem level.dat
+{"lvl":"info","msg":"Generated a private key for NetherNet listener. (path=/tmp/mobosrv-selftest3835530029/keys/server_identity_key.pem)","t":"log"}
+{"lvl":"info","msg":"NetherNet listener running. (addr=[::]:19132)","t":"log"}
+{"lvl":"info","msg":"Opened dimension. (name=World)","t":"log"}
+{"lvl":"info","msg":"Opened dimension. (name=World)","t":"log"}
+{"lvl":"info","msg":"Opened dimension. (name=World)","t":"log"}
+{"lvl":"info","msg":"Dragonfly server started. (mc-version=1.26.60, go-version=go1.27.4, commit=ddbe76cec4d4b9d2aa6fabe70dbc0d75f3116ad3)","t":"log"}
+{"lvl":"info","msg":"Modo de jogo: survival | Dificuldade: normal","t":"log"}
+{"lvl":"info","msg":"Ponto de nascimento: 0, 72, 0","t":"log"}
+{"lvl":"info","msg":"Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em 0 ms (nome \"MoboSelfTest\", protocolo 2225)","t":"log"}
+{"lvl":"info","msg":"Nome que o cliente recebe ao digitar o endereco: \"MoboSelfTest\"","t":"log"}
+{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.1.147, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.1.147/20, eth0/fe80::20d:3aff:fea4:c416/64)","t":"log"}
+{"auth":false,"gen":"terrain","ice":{"ok":true,"candidates":4,"hosts":["10.1.1.147","172.17.0.1"],"interfaces":["docker0/172.17.0.1/16","eth0/10.1.1.147/20","eth0/fe80::20d:3aff:fea4:c416/64"],"source":"netlink","elapsedMs":0},"imported":false,"max":4,"name":"MoboSelfTest","nethernet":true,"port":19132,"protocol":2225,"raknet":false,"signaling":{"status":200,"name":"MoboSelfTest","protocol":2225,"version":"1.26.60","max":4,"body":"{\"name\":\"MoboSelfTest\",\"protocol\":2225,\"version\":\"1.26.60\",\"level\":\"\",\"players\":0,\"maxPlayers\":4,\"gameType\":0}"},"t":"ready","transports":["nethernet"],"version":"1.26.60"}
+{"lvl":"info","msg":"Servidor de Minecraft Bedrock 1.26.60 (protocolo 2225) escutando na porta UDP 19132","t":"log"}
+{"lvl":"info","msg":"Descoberta automática na aba LAN desligada (NetherNet não responde ao ping do RakNet). Entre pelo endereço; para ver o servidor na aba LAN, ligue \"Compatibilidade RakNet\" em Ajustes avançados.","t":"log"}
+selftest: surface block at spawn: block.Grass
+selftest: sinalizacao NetherNet ok em TCP 19132 (GET /v1/join 200, nome "MoboSelfTest", protocolo 2225)
+{"lvl":"info","msg":"Servidor responde em 10.1.1.147:19132 (eth0)","t":"log"}
+{"lvl":"info","msg":"Servidor responde em 172.17.0.1:19132 (docker0)","t":"log"}
+{"t":"lan","targets":[{"iface":"eth0","ip":"10.1.1.147","ok":true},{"iface":"docker0","ip":"172.17.0.1","ok":true}]}
+selftest: ICE ok (4 candidatos via netlink, host em 10.1.1.147, 172.17.0.1)
+{"lvl":"info","msg":"Desligando o servidor e salvando o mundo...","t":"log"}
+{"lvl":"info","msg":"Server closing...","t":"log"}
+{"lvl":"info","msg":"Server closed. (uptime=3.94923ms)","t":"log"}
+{"lvl":"info","msg":"Mundo salvo. Servidor desligado.","t":"log"}
+{"t":"stopped"}
+SELFTEST OK
+{"lvl":"warn","msg":"Não encontrei os certificados do Android: conexões HTTPS podem falhar (validação de certificado continua ativa).","t":"log"}
+{"lvl":"info","msg":"Nenhum mundo encontrado: um novo mundo sera gerado.","t":"log"}
+{"lvl":"info","msg":"Gerador selecionado: terreno natural","t":"log"}
+{"lvl":"info","msg":"Generated a private key for NetherNet listener. (path=/tmp/mobosrv-selftest1079227764/keys/server_identity_key.pem)","t":"log"}
+{"lvl":"info","msg":"NetherNet listener running. (addr=[::]:19555)","t":"log"}
+{"lvl":"info","msg":"Opened dimension. (name=World)","t":"log"}
+{"lvl":"info","msg":"Opened dimension. (name=World)","t":"log"}
+{"lvl":"info","msg":"Opened dimension. (name=World)","t":"log"}
+{"lvl":"info","msg":"Dragonfly server started. (mc-version=1.26.60, go-version=go1.27.4, commit=ddbe76cec4d4b9d2aa6fabe70dbc0d75f3116ad3)","t":"log"}
+{"lvl":"info","msg":"Modo de jogo: survival | Dificuldade: normal","t":"log"}
+{"lvl":"info","msg":"Ponto de nascimento: 0, 72, 0","t":"log"}
+{"lvl":"info","msg":"Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em 0 ms (nome \"MoboSelfTest\", protocolo 2225)","t":"log"}
+{"lvl":"info","msg":"Nome que o cliente recebe ao digitar o endereco: \"MoboSelfTest\"","t":"log"}
+{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.1.147, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.1.147/20, eth0/fe80::20d:3aff:fea4:c416/64)","t":"log"}
+{"auth":false,"gen":"terrain","ice":{"ok":true,"candidates":4,"hosts":["10.1.1.147","172.17.0.1"],"interfaces":["docker0/172.17.0.1/16","eth0/10.1.1.147/20","eth0/fe80::20d:3aff:fea4:c416/64"],"source":"netlink","elapsedMs":0},"imported":false,"max":4,"name":"MoboSelfTest","nethernet":true,"port":19555,"protocol":2225,"raknet":false,"signaling":{"status":200,"name":"MoboSelfTest","protocol":2225,"version":"1.26.60","max":4,"body":"{\"name\":\"MoboSelfTest\",\"protocol\":2225,\"version\":\"1.26.60\",\"level\":\"\",\"players\":0,\"maxPlayers\":4,\"gameType\":0}"},"t":"ready","transports":["nethernet"],"version":"1.26.60"}
+{"lvl":"info","msg":"Servidor de Minecraft Bedrock 1.26.60 (protocolo 2225) escutando na porta UDP 19555","t":"log"}
+{"lvl":"info","msg":"Descoberta automática na aba LAN desligada (NetherNet não responde ao ping do RakNet). Entre pelo endereço; para ver o servidor na aba LAN, ligue \"Compatibilidade RakNet\" em Ajustes avançados.","t":"log"}
+selftest: surface block at spawn: block.Grass
+selftest: sinalizacao NetherNet ok em TCP 19555 (GET /v1/join 200, nome "MoboSelfTest", protocolo 2225)
+{"lvl":"info","msg":"Servidor responde em 10.1.1.147:19555 (eth0)","t":"log"}
+{"lvl":"info","msg":"Servidor responde em 172.17.0.1:19555 (docker0)","t":"log"}
+{"t":"lan","targets":[{"iface":"eth0","ip":"10.1.1.147","ok":true},{"iface":"docker0","ip":"172.17.0.1","ok":true}]}
+selftest: ICE ok (4 candidatos via netlink, host em 10.1.1.147, 172.17.0.1)
+{"lvl":"info","msg":"Desligando o servidor e salvando o mundo...","t":"log"}
+{"lvl":"info","msg":"Server closing...","t":"log"}
+{"lvl":"info","msg":"Server closed. (uptime=4.569992ms)","t":"log"}
+{"lvl":"info","msg":"Mundo salvo. Servidor desligado.","t":"log"}
+{"t":"stopped"}
+SELFTEST OK
+{"lvl":"warn","msg":"Não encontrei os certificados do Android: conexões HTTPS podem falhar (validação de certificado continua ativa).","t":"log"}
+{"lvl":"info","msg":"Nenhum mundo encontrado: um novo mundo sera gerado.","t":"log"}
+{"lvl":"info","msg":"Gerador selecionado: terreno natural","t":"log"}
+{"lvl":"info","msg":"RakNet listener running. (addr=[::]:19134)","t":"log"}
+{"lvl":"info","msg":"Generated a private key for NetherNet listener. (path=/tmp/mobosrv-selftest3415654326/keys/server_identity_key.pem)","t":"log"}
+{"lvl":"info","msg":"NetherNet listener running. (addr=[::]:19134)","t":"log"}
+{"lvl":"info","msg":"Opened dimension. (name=World)","t":"log"}
+{"lvl":"info","msg":"Opened dimension. (name=World)","t":"log"}
+{"lvl":"info","msg":"Opened dimension. (name=World)","t":"log"}
+{"lvl":"info","msg":"Dragonfly server started. (mc-version=1.26.60, go-version=go1.27.4, commit=ddbe76cec4d4b9d2aa6fabe70dbc0d75f3116ad3)","t":"log"}
+{"lvl":"info","msg":"Modo de jogo: survival | Dificuldade: normal","t":"log"}
+{"lvl":"info","msg":"Ponto de nascimento: 0, 72, 0","t":"log"}
+{"lvl":"info","msg":"Listener RakNet ativo: UDP :19134 (compatibilidade e descoberta na rede local)","t":"log"}
+{"lvl":"info","msg":"Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em 0 ms (nome \"MoboSelfTest\", protocolo 2225)","t":"log"}
+{"lvl":"info","msg":"Nome que o cliente recebe ao digitar o endereco: \"MoboSelfTest\"","t":"log"}
+{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.1.147, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.1.147/20, eth0/fe80::20d:3aff:fea4:c416/64)","t":"log"}
+{"auth":false,"gen":"terrain","ice":{"ok":true,"candidates":4,"hosts":["10.1.1.147","172.17.0.1"],"interfaces":["docker0/172.17.0.1/16","eth0/10.1.1.147/20","eth0/fe80::20d:3aff:fea4:c416/64"],"source":"netlink","elapsedMs":0},"imported":false,"max":4,"name":"MoboSelfTest","nethernet":true,"port":19134,"protocol":2225,"raknet":true,"signaling":{"status":200,"name":"MoboSelfTest","protocol":2225,"version":"1.26.60","max":4,"body":"{\"name\":\"MoboSelfTest\",\"protocol\":2225,\"version\":\"1.26.60\",\"level\":\"\",\"players\":0,\"maxPlayers\":4,\"gameType\":0}"},"t":"ready","transports":["nethernet","raknet"],"version":"1.26.60"}
+{"lvl":"info","msg":"Servidor de Minecraft Bedrock 1.26.60 (protocolo 2225) escutando na porta UDP 19134","t":"log"}
+{"lvl":"info","msg":"Descoberta na rede local: o servidor responde aos pings de busca do Minecraft na porta UDP 19134 (aba Servidores / LAN do jogo).","t":"log"}
+selftest: surface block at spawn: block.Grass
+selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;6881145889564072435;;Survival;1;19134;19134;0;0;
+selftest: interface eth0 (10.1.1.147) respondeu no ping
+selftest: sinalizacao NetherNet ok em TCP 19134 (GET /v1/join 200, nome "MoboSelfTest", protocolo 2225)
+selftest: ICE ok (4 candidatos via netlink, host em 10.1.1.147, 172.17.0.1)
+{"lvl":"info","msg":"Desligando o servidor e salvando o mundo...","t":"log"}
+{"lvl":"info","msg":"Server closing...","t":"log"}
+{"lvl":"info","msg":"Mundo salvo. Servidor desligado.","t":"log"}
+{"t":"stopped"}
+SELFTEST OK
+{"lvl":"info","msg":"Server closed. (uptime=4.391944ms)","t":"log"}
+{"lvl":"warn","msg":"Não encontrei os certificados do Android: conexões HTTPS podem falhar (validação de certificado continua ativa).","t":"log"}
+{"lvl":"info","msg":"Nenhum mundo encontrado: um novo mundo sera gerado.","t":"log"}
+{"lvl":"info","msg":"Gerador selecionado: terreno natural","t":"log"}
+{"lvl":"info","msg":"RakNet listener running. (addr=[::]:19136)","t":"log"}
+{"lvl":"info","msg":"Generated a private key for NetherNet listener. (path=/tmp/mobosrv-selftest2865833175/keys/server_identity_key.pem)","t":"log"}
+{"lvl":"info","msg":"NetherNet listener running. (addr=[::]:19136)","t":"log"}
+{"lvl":"info","msg":"Opened dimension. (name=World)","t":"log"}
+{"lvl":"info","msg":"Opened dimension. (name=World)","t":"log"}
+{"lvl":"info","msg":"Opened dimension. (name=World)","t":"log"}
+{"lvl":"info","msg":"Dragonfly server started. (mc-version=1.26.60, go-version=go1.27.4, commit=ddbe76cec4d4b9d2aa6fabe70dbc0d75f3116ad3)","t":"log"}
+{"lvl":"info","msg":"Modo de jogo: survival | Dificuldade: normal","t":"log"}
+{"lvl":"info","msg":"Ponto de nascimento: 0, 72, 0","t":"log"}
+{"lvl":"info","msg":"Listener RakNet ativo: UDP :19136 (compatibilidade e descoberta na rede local)","t":"log"}
+{"lvl":"info","msg":"Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em 0 ms (nome \"MoboSelfTest\", protocolo 2225)","t":"log"}
+{"lvl":"info","msg":"Nome que o cliente recebe ao digitar o endereco: \"MoboSelfTest\"","t":"log"}
+{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.1.147, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.1.147/20, eth0/fe80::20d:3aff:fea4:c416/64)","t":"log"}
+{"auth":false,"gen":"terrain","ice":{"ok":true,"candidates":4,"hosts":["10.1.1.147","172.17.0.1"],"interfaces":["docker0/172.17.0.1/16","eth0/10.1.1.147/20","eth0/fe80::20d:3aff:fea4:c416/64"],"source":"netlink","elapsedMs":0},"imported":false,"max":4,"name":"MoboSelfTest","nethernet":true,"port":19136,"protocol":2225,"raknet":true,"signaling":{"status":200,"name":"MoboSelfTest","protocol":2225,"version":"1.26.60","max":4,"body":"{\"name\":\"MoboSelfTest\",\"protocol\":2225,\"version\":\"1.26.60\",\"level\":\"\",\"players\":0,\"maxPlayers\":4,\"gameType\":0}"},"t":"ready","transports":["nethernet","raknet"],"version":"1.26.60"}
+{"lvl":"info","msg":"Servidor de Minecraft Bedrock 1.26.60 (protocolo 2225) escutando na porta UDP 19136","t":"log"}
+{"lvl":"info","msg":"Descoberta na rede local: o servidor responde aos pings de busca do Minecraft na porta UDP 19136 (aba Servidores / LAN do jogo).","t":"log"}
+selftest: surface block at spawn: block.Grass
+selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;4005803688722886055;;Survival;1;19136;19136;0;0;
+selftest: interface eth0 (10.1.1.147) respondeu no ping
+selftest: sinalizacao NetherNet ok em TCP 19136 (GET /v1/join 200, nome "MoboSelfTest", protocolo 2225)
+selftest: ICE ok (4 candidatos via netlink, host em 10.1.1.147, 172.17.0.1)
+selftest: tunel ok, porta publica 46326 respondeu ao ping RakNet
+{"lvl":"info","msg":"Desligando o servidor e salvando o mundo...","t":"log"}
+{"lvl":"info","msg":"Server closing...","t":"log"}
+{"lvl":"info","msg":"Mundo salvo. Servidor desligado.","t":"log"}
+{"t":"stopped"}
+SELFTEST OK
+{"lvl":"info","msg":"Server closed. (uptime=55.223884ms)","t":"log"}
