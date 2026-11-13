@@ -97,7 +97,7 @@ func (n *iceNetwork) ifacesFromAndroid() ([]*transport.Interface, error) {
 	}
 	out := make([]*transport.Interface, 0, len(doc.Interfaces))
 	for _, fi := range doc.Interfaces {
-		var flags net.Flag
+		var flags net.Flags
 		if fi.Up {
 			flags |= net.FlagUp
 		}
