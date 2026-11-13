@@ -76,6 +76,7 @@ fun AppRoot() {
             when (tab) {
                 0 -> HomeScreen(
                     state = state,
+                    onOpenWorlds = { tab = 1 },
                     config = config,
                     onStart = { ServerService.start(context) },
                     onStop = { ServerController.stop() },

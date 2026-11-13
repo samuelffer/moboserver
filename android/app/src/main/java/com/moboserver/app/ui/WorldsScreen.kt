@@ -96,7 +96,7 @@ fun WorldsScreen() {
             }
             importing = false
             if (outcome is WorldInfo) {
-                Store.update { it.copy(activeWorldId = outcome.id) }
+                val selection = ServerController.selectWorld(outcome.id)
                 reload()
                 message = buildString {
                     append("Mundo \"${outcome.name}\" importado e selecionado.")
@@ -108,6 +108,9 @@ fun WorldsScreen() {
                             " Metadados preservados: ${outcome.fixedTags.joinToString(", ")} " +
                                 "(voltam ao arquivo quando o mundo é salvo).",
                         )
+                    }
+                    if (!selection.ok) {
+                        append(" Mas não foi possível selecioná-lo: ${selection.failure?.message ?: "erro desconhecido"}")
                     }
                 }
             } else {
@@ -202,10 +205,17 @@ fun WorldsScreen() {
                 WorldCard(
                     world = world,
                     active = world.id == config.activeWorldId,
+                    running = world.id == ServerController.runningWorldId,
                     enabled = !busy,
                     onSelect = {
-                        Store.update { it.copy(activeWorldId = world.id) }
-                        message = "O servidor vai abrir \"${world.name}\" no próximo início."
+                        val outcome = ServerController.selectWorld(world.id)
+                        if (outcome.ok) {
+                            message = "O servidor vai abrir \"${world.name}\" no próximo início."
+                        } else {
+                            message = outcome.failure?.let { "${it.title}: ${it.message}" }
+                                ?: "Não foi possível selecionar este mundo."
+                        }
+                        reload()
                     },
                     onValidate = {
                         scope.launch {
@@ -242,18 +252,27 @@ fun WorldsScreen() {
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    val id = world.id
-                    pendingDelete = null
-                    scope.launch {
-                        withContext(Dispatchers.IO) { repository.delete(id) }
-                        if (config.activeWorldId == id) {
-                            Store.update { it.copy(activeWorldId = "") }
+                TextButton(
+                    enabled = world.id != ServerController.runningWorldId,
+                    onClick = {
+                        val id = world.id
+                        pendingDelete = null
+                        scope.launch {
+                            // O mundo carregado pela sessão nunca é apagado.
+                            if (id == ServerController.runningWorldId) {
+                                message = "Pare o servidor antes de excluir o mundo que está em execução."
+                                return@launch
+                            }
+                            withContext(Dispatchers.IO) { repository.delete(id) }
+                            // Limpa a seleção apenas se ela ainda apontar para o
+                            // mundo removido: se o usuário escolheu outro nesse
+                            // meio-tempo, a escolha nova é preservada.
+                            Store.clearWorldIf(id)
+                            reload()
+                            message = "Mundo excluído."
                         }
-                        reload()
-                        message = "Mundo excluído."
-                    }
-                }) { Text("Excluir", color = MoboColors.Danger) }
+                    },
+                ) { Text("Excluir", color = MoboColors.Danger) }
             },
             dismissButton = {
                 TextButton(onClick = { pendingDelete = null }) { Text("Cancelar") }
@@ -267,6 +286,7 @@ fun WorldsScreen() {
 private fun WorldCard(
     world: WorldInfo,
     active: Boolean,
+    running: Boolean,
     enabled: Boolean,
     onSelect: () -> Unit,
     onValidate: () -> Unit,
@@ -294,7 +314,17 @@ private fun WorldCard(
                     )
                 }
             }
-            if (active) {
+            if (running) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MoboColors.LimeSoft)
+                        .border(1.dp, MoboColors.Lime, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Text("Em execução", color = MoboColors.Lime, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            } else if (active) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
@@ -314,7 +344,7 @@ private fun WorldCard(
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.weight(1f),
             ) {
-                Text(if (active) "Selecionado" else "Usar este mundo", fontSize = 12.sp)
+                Text(if (active) "Selecionado para o próximo início" else "Usar este mundo", fontSize = 12.sp)
             }
             OutlinedButton(
                 onClick = onValidate,

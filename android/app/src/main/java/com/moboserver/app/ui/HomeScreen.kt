@@ -63,6 +63,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun HomeScreen(
     state: RuntimeState,
+    onOpenWorlds: () -> Unit,
     config: ServerConfig,
     onStart: () -> Unit,
     onStop: () -> Unit,
@@ -113,12 +114,24 @@ fun HomeScreen(
             onStop = onStop,
         )
 
-        if (state.error != null) {
+        val failure = state.failure
+        if (failure != null) {
             Spacer(Modifier.height(12.dp))
             MoboCard(color = Color(0xFF2A1414), borderColor = Color(0xFF5C2A2A)) {
                 SectionTitle("Atenção", modifier = Modifier)
                 Spacer(Modifier.height(8.dp))
-                Text(state.error, color = MoboColors.Danger, fontSize = 13.sp)
+                Text(failure.title, color = MoboColors.Danger, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                Text(failure.message, color = MoboColors.TextPrimary, fontSize = 13.sp)
+                if (failure.openWorlds) {
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = onOpenWorlds,
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Text("Abrir Mundos", fontSize = 13.sp)
+                    }
+                }
             }
         }
 

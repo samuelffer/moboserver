@@ -40,10 +40,15 @@ data class WorldValidation(
     val storageVersion: Int = 0,
     val dbFiles: Int = 0,
     val worldBytes: Long = 0,
+    /** true quando o validador estourou o prazo (não é "mundo inválido"). */
+    val timeout: Boolean = false,
 ) {
     /** Mensagem curta e específica para o usuário. */
     fun message(fallbackName: String = ""): String {
         if (ok) return "Mundo \"${levelName.ifBlank { fallbackName }}\" pronto para abrir."
+        if (timeout) {
+            return "A validação demorou demais e foi encerrada. O mundo não foi alterado; tente de novo."
+        }
         val suffix = detail.ifBlank { "" }
         return when (code) {
             "incompatible_metadata" ->
@@ -70,6 +75,12 @@ class WorldRepository(context: Context) {
     companion object {
         /** Nome do arquivo com a cópia do .mcworld recebido. */
         const val ORIGINAL_NAME = "original.mcworld"
+
+        /** Prazo do validador: mundo grande em aparelho lento ainda cabe. */
+        const val VALIDATE_TIMEOUT_MS = 60_000L
+
+        /** Teto da saída lida do validador (o JSON real tem poucas linhas). */
+        private const val MAX_VALIDATOR_OUTPUT = 512 * 1024
     }
 
     private val app = context.applicationContext
@@ -86,11 +97,43 @@ class WorldRepository(context: Context) {
     fun originalFile(id: String): File = File(directory(id), ORIGINAL_NAME)
 
     /**
-     * Valida level.dat e db/ com o mesmo código que abre o mundo no servidor.
-     * O binário imprime um JSON e devolve um código de saída próprio, então a
-     * mensagem mostrada ao usuário vem daqui, não de uma suposição do app.
+     * Fatos do mundo no disco, sem validação cara: serve para separar "a pasta
+     * sumiu" de "a pasta está incompleta" antes de qualquer coisa.
      */
-    fun validate(id: String): WorldValidation {
+    fun inspect(id: String): WorldFacts {
+        if (id.isBlank()) {
+            return WorldFacts(folderExists = false, hasLevelDat = false, hasDbDir = false, dbFiles = 0)
+        }
+        val dir = directory(id)
+        if (!dir.isDirectory) {
+            return WorldFacts(folderExists = false, hasLevelDat = false, hasDbDir = false, dbFiles = 0)
+        }
+        val levelDat = File(dir, "level.dat")
+        val db = File(dir, "db")
+        val dbFiles = if (db.isDirectory) {
+            db.listFiles()?.count { it.isFile } ?: 0
+        } else {
+            0
+        }
+        return WorldFacts(
+            folderExists = true,
+            hasLevelDat = levelDat.isFile && levelDat.length() > 0,
+            hasDbDir = db.isDirectory,
+            dbFiles = dbFiles,
+            sizeBytes = if (db.isDirectory) dbFiles.toLong() else 0L,
+        )
+    }
+
+    /**
+     * Valida level.dat e db/ com o mesmo código que abre o mundo no servidor.
+     *
+     * O prazo é real: a saída do processo é lida em uma thread própria (limite de
+     * 512 KB) enquanto [Process.waitFor] espera o limite. Um validador travado
+     * com stdout aberto não bloqueia mais a importação/inicialização — o
+     * processo é encerrado à força e o resultado diz que houve timeout, que não é
+     * a mesma coisa que "mundo inválido".
+     */
+    fun validate(id: String, timeoutMillis: Long = VALIDATE_TIMEOUT_MS): WorldValidation {
         val dir = directory(id)
         if (!dir.isDirectory) {
             return WorldValidation(ok = false, code = "invalid_file", detail = "a pasta do mundo não existe")
@@ -109,18 +152,70 @@ class WorldRepository(context: Context) {
                 .redirectErrorStream(true)
                 .start()
         } catch (e: Exception) {
-            return WorldValidation(ok = false, code = "invalid_file", detail = "falha ao executar o validador: ${e.message}")
+            return WorldValidation(
+                ok = false,
+                code = "invalid_file",
+                detail = "falha ao executar o validador: ${e.message}",
+            )
         }
-        val output = try {
-            val text = process.inputStream.bufferedReader().readText()
-            process.waitFor(90, TimeUnit.SECONDS)
-            text
-        } catch (e: Exception) {
+
+        // StringBuffer é sincronizado: a thread de leitura e a thread que espera
+        // o processo não disputam o mesmo buffer.
+        val buffer = StringBuffer()
+        val reader = Thread {
+            try {
+                process.inputStream.bufferedReader(Charsets.UTF_8).use { input ->
+                    val chunk = CharArray(4096)
+                    while (buffer.length < MAX_VALIDATOR_OUTPUT) {
+                        val read = input.read(chunk)
+                        if (read <= 0) break
+                        buffer.append(chunk, 0, read)
+                    }
+                }
+            } catch (e: Exception) {
+                // processo encerrado à força: a leitura acaba aqui de propósito
+            }
+        }
+        reader.isDaemon = true
+        reader.start()
+
+        val finished = try {
+            process.waitFor(timeoutMillis, TimeUnit.MILLISECONDS)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
+        if (!finished) {
             process.destroyForcibly()
-            return WorldValidation(ok = false, code = "invalid_file", detail = "o validador não respondeu: ${e.message}")
+            try {
+                process.waitFor(2, TimeUnit.SECONDS)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+            closeQuietly(process)
+            return WorldValidation(
+                ok = false,
+                code = "validation_timeout",
+                detail = "o validador não terminou em ${timeoutMillis / 1000}s",
+                timeout = true,
+            )
         }
+
+        // O processo terminou: a thread de leitura recebe o EOF logo em seguida.
+        try {
+            reader.join(1_500)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+        closeQuietly(process)
+
+        val output = buffer.toString()
         val json = output.lineSequence().map { it.trim() }.firstOrNull { it.startsWith("{") }
-            ?: return WorldValidation(ok = false, code = "invalid_file", detail = "o validador não devolveu resultado")
+            ?: return WorldValidation(
+                ok = false,
+                code = "invalid_file",
+                detail = "o validador não devolveu resultado (saída: ${output.take(200).ifBlank { "vazia" }})",
+            )
         return try {
             val o = JSONObject(json)
             WorldValidation(
@@ -135,6 +230,24 @@ class WorldRepository(context: Context) {
             )
         } catch (e: Exception) {
             WorldValidation(ok = false, code = "invalid_file", detail = "resultado do validador ilegível: ${e.message}")
+        }
+    }
+
+    private fun closeQuietly(process: Process) {
+        try {
+            process.outputStream.close()
+        } catch (e: Exception) {
+            // ignore
+        }
+        try {
+            process.errorStream.close()
+        } catch (e: Exception) {
+            // ignore
+        }
+        try {
+            process.inputStream.close()
+        } catch (e: Exception) {
+            // ignore
         }
     }
 

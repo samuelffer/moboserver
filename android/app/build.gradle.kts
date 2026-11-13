@@ -95,6 +95,9 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // Testes de JVM da lógica pura (seleção de mundo e mesclagem de config).
+    testImplementation("junit:junit:4.13.2")
 }
 
 /**

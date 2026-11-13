@@ -324,7 +324,9 @@ fun SettingsScreen() {
         Button(
             onClick = {
                 val port = draft.port.coerceIn(1024, 65535)
-                Store.save(draft.copy(port = port))
+                // saveSettings mescla apenas os campos desta tela no estado mais
+                // recente: a seleção de mundo feita em Mundos é preservada.
+                Store.saveSettings(draft.copy(port = port))
                 savedFlash = true
             },
             modifier = Modifier

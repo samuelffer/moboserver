@@ -113,6 +113,12 @@ data class RuntimeState(
     val logs: List<LogLine> = emptyList(),
     val info: ServerInfo? = null,
     val error: String? = null,
+    /**
+     * Falha classificada do último início (título + mensagem + detalhe técnico
+     * separado). A interface mostra título/mensagem; o detalhe vai só para o
+     * diagnóstico.
+     */
+    val failure: StartFailure? = null,
     val startedAt: Long? = null,
     val exposure: Exposure = Exposure(),
     /** Name of the world the current/last session was started with. */

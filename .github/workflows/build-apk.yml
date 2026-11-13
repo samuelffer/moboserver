@@ -193,6 +193,16 @@ jobs:
           unzip -q /tmp/gradle.zip -d "$HOME/gradle-dist"
           echo "$HOME/gradle-dist/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
 
+      # Testes de JVM da logica de selecao de mundo / mesclagem de configuracao.
+      # Nao precisa de aparelho e falha o build quando o ID selecionado deixa de
+      # chegar ao inicio ou quando Ajustes volta a sobrescrever a selecao.
+      - name: Testes de logica do app (JVM)
+        working-directory: android
+        run: |
+          set -o pipefail
+          gradle --no-daemon testReleaseUnitTest 2>&1 | tee /tmp/gradle-unit.log
+          grep -h "tests=" app/build/test-results/testReleaseUnitTest/*.xml | sed -E 's/.*(tests="[0-9]+" skipped="[0-9]+" failures="[0-9]+" errors="[0-9]+").*/\1/' || true
+
       - name: Compilar APK release
         working-directory: android
         run: |
@@ -207,6 +217,9 @@ jobs:
           mkdir -p .ci-logs
           if [ -f /tmp/go-check.log ]; then
             cp /tmp/go-check.log .ci-logs/go-check.log
+          fi
+          if [ -f /tmp/gradle-unit.log ]; then
+            cp /tmp/gradle-unit.log .ci-logs/gradle-unit.log
           fi
           if [ -f /tmp/gradle.log ]; then
             tail -c 200000 /tmp/gradle.log > .ci-logs/gradle.log

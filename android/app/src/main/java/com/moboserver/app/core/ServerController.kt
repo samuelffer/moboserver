@@ -49,6 +49,8 @@ object ServerController {
         var avatarSession: Long = 0L
         /** Quando o processo começou a subir, para medir o tempo até o status. */
         var startedAtMs: Long = 0L
+        /** Mundo capturado no início: a sessão não relê a seleção depois. */
+        var worldId: String = ""
     }
 
     private var appContext: Context? = null
@@ -71,6 +73,66 @@ object ServerController {
 
     val isBusy: Boolean
         get() = session?.let { !it.finished } == true
+
+    /** ID do mundo carregado pela sessão atual (null quando nada está rodando). */
+    val runningWorldId: String?
+        get() {
+            val s = session ?: return null
+            if (s.finished) return null
+            return when (_state.value.status) {
+                ServerStatus.STARTING, ServerStatus.RUNNING, ServerStatus.STOPPING -> s.worldId
+                else -> null
+            }
+        }
+
+    /**
+     * Fonte única de seleção de mundo. Verifica a pasta, persiste o ID e devolve
+     * o resultado; em caso de falha a seleção anterior é preservada e nada é
+     * apagado.
+     */
+    @Synchronized
+    fun selectWorld(id: String): SelectOutcome {
+        val previous = Store.snapshot().activeWorldId
+        val cleanId = id.trim()
+        if (cleanId.isBlank()) {
+            val failure = WorldDiagnosis.inspect("", null) ?: WorldDiagnosis.noRepository()
+            appendLog("warn", "Seleção de mundo recusada: ID vazio.")
+            return SelectOutcome(ok = false, selectedId = previous, previousId = previous, failure = failure)
+        }
+        if (isBusy) {
+            appendLog("warn", "Seleção de mundo recusada: servidor em execução.")
+            return SelectOutcome(
+                ok = false,
+                selectedId = previous,
+                previousId = previous,
+                failure = WorldDiagnosis.busy(),
+            )
+        }
+        val repository = worlds()
+            ?: return SelectOutcome(
+                ok = false,
+                selectedId = previous,
+                previousId = previous,
+                failure = WorldDiagnosis.noRepository(),
+            )
+        val facts = repository.inspect(cleanId)
+        val failure = WorldDiagnosis.inspect(cleanId, facts)
+        if (failure != null) {
+            appendLog(
+                "warn",
+                "Seleção de mundo recusada (${WorldDiagnosis.code(failure.problem)}): " +
+                    "id=$cleanId pasta=${repository.directory(cleanId).absolutePath} existe=${facts.folderExists}",
+            )
+            return SelectOutcome(ok = false, selectedId = previous, previousId = previous, failure = failure)
+        }
+        Store.selectWorld(cleanId)
+        appendLog(
+            "info",
+            "Mundo selecionado: id=$cleanId (anterior=${previous.ifBlank { "<vazio>" }}) " +
+                "pasta=${repository.directory(cleanId).absolutePath}",
+        )
+        return SelectOutcome(ok = true, selectedId = cleanId, previousId = previous)
+    }
 
     /**
      * Starts the server with the settings currently stored in [Store].
@@ -95,11 +157,7 @@ object ServerController {
             } catch (e: Exception) {
                 Log.e(TAG, "failed to prepare the server", e)
                 if (isCurrent(created)) {
-                    fail(
-                        "Não foi possível preparar o servidor neste aparelho.\n\n" +
-                            "Detalhe: ${e.message}\n\n" +
-                            "Abra Ajustes → Diagnóstico e use \"Testar servidor embutido\".",
-                    )
+                    fail(created, WorldDiagnosis.binaryFailure("preparo: ${e.message}"))
                 }
             }
         }
@@ -109,26 +167,55 @@ object ServerController {
     private fun isCurrent(s: Session): Boolean = session === s && !s.finished && !s.stopRequested
 
     private fun startInternal(context: Context, s: Session) {
-        val config = Store.config.value
+        // Snapshot da sessão: o que chega ao processo é exatamente o que estava
+        // selecionado aqui, mesmo que a UI mude de ideia no meio do caminho.
+        val config = Store.snapshot()
         val repository = WorldRepository(context)
-
-        // Nada de mundo automático: o app só abre um mundo que o usuário
-        // importou do Minecraft e que passou na validação (level.dat + db/).
         val worldId = config.activeWorldId
-        if (worldId.isBlank() || !repository.exists(worldId)) {
-            if (isCurrent(s)) {
-                fail(
-                    "Nenhum mundo selecionado. Abra a aba Mundos e importe o .mcworld exportado pelo " +
-                        "Minecraft antes de iniciar o servidor.",
-                )
-            }
+        s.worldId = worldId
+
+        val version = appVersion()
+        appendLog(
+            "debug",
+            "Início: app=${context.packageName} v${version.first}/${version.second} " +
+                "mundo=${worldId.ifBlank { "<vazio>" }} porta=${config.port} raknet=${config.rakNet}",
+        )
+
+        // Classificação explícita: cada motivo tem mensagem própria e nenhum
+        // deles apaga ou recria a pasta do mundo.
+        val facts = if (worldId.isBlank()) null else repository.inspect(worldId)
+        val selectionFailure = WorldDiagnosis.inspect(worldId, facts)
+        if (selectionFailure != null) {
+            appendLog(
+                "warn",
+                "Início recusado (${WorldDiagnosis.code(selectionFailure.problem)}): " +
+                    "id=${worldId.ifBlank { "<vazio>" }} " +
+                    "dir=${if (worldId.isBlank()) "-" else repository.directory(worldId).absolutePath} " +
+                    "existe=${facts?.folderExists ?: false} level.dat=${facts?.hasLevelDat ?: false} " +
+                    "db=${facts?.dbFiles ?: 0} arquivos",
+            )
+            if (isCurrent(s)) fail(s, selectionFailure)
             return
         }
         if (!isCurrent(s)) return
 
         val validation = repository.validate(worldId)
+        if (validation.timeout) {
+            appendLog("error", "Validação do mundo: timeout de ${WorldRepository.VALIDATE_TIMEOUT_MS / 1000}s.")
+            if (isCurrent(s)) fail(s, WorldDiagnosis.validationTimeout(WorldRepository.VALIDATE_TIMEOUT_MS / 1000))
+            return
+        }
         if (!validation.ok) {
-            if (isCurrent(s)) fail(validation.message(repository.nameOf(worldId)))
+            if (isCurrent(s)) {
+                fail(
+                    s,
+                    WorldDiagnosis.validationFailure(
+                        validation.code,
+                        validation.detail,
+                        repository.nameOf(worldId),
+                    ),
+                )
+            }
             return
         }
         if (!isCurrent(s)) return
@@ -154,7 +241,7 @@ object ServerController {
         val binary = try {
             ServerProcess.resolveBinary(context)
         } catch (e: Exception) {
-            if (isCurrent(s)) fail("O servidor embutido não foi encontrado no aplicativo: ${e.message}")
+            if (isCurrent(s)) fail(s, WorldDiagnosis.binaryFailure("resolveBinary: ${e.message}"))
             return
         }
         // Last checkpoint: stopping while the binary is being prepared must not
@@ -193,11 +280,7 @@ object ServerController {
         } catch (e: Exception) {
             Log.e(TAG, "failed to start server", e)
             if (isCurrent(s)) {
-                fail(
-                    "Não foi possível executar o servidor neste aparelho.\n\n" +
-                        "Detalhe: ${e.message}\n\n" +
-                        "Abra Ajustes → Diagnóstico e use \"Testar servidor embutido\" para ver o motivo exato.",
-                )
+                fail(s, WorldDiagnosis.binaryFailure("start(): ${e.message}"))
             }
             return
         }
@@ -461,8 +544,14 @@ object ServerController {
                 process.destroy()
                 s.stopRequested = true
                 fail(
-                    "O servidor não terminou de iniciar em 60 segundos. Abra o Console para ver a última " +
-                        "mensagem do servidor e tente novamente.",
+                    s,
+                    StartFailure(
+                        problem = StartProblem.OTHER,
+                        title = "O servidor não terminou de iniciar",
+                        message = "O servidor não ficou online em 60 segundos. Veja a última mensagem no " +
+                            "Console e tente de novo.",
+                        technical = "watchStartup: timeout de 60s",
+                    ),
                 )
             }
         }
@@ -621,7 +710,15 @@ object ServerController {
 
             is ServerEvent.Stopped -> Unit
 
-            is ServerEvent.Fatal -> fail(event.message)
+            is ServerEvent.Fatal -> fail(
+                s,
+                StartFailure(
+                    problem = StartProblem.OTHER,
+                    title = "O servidor parou",
+                    message = event.message,
+                    technical = "evento fatal do binário",
+                ),
+            )
 
             is ServerEvent.Exited -> {
                 LanProbe.stop()
@@ -639,8 +736,14 @@ object ServerController {
                     }
                     status == ServerStatus.ERROR -> Unit
                     else -> fail(
-                        "O servidor foi encerrado inesperadamente (código ${event.code}). " +
-                            "Veja o console para descobrir o motivo.",
+                        s,
+                        StartFailure(
+                            problem = StartProblem.OTHER,
+                            title = "O servidor foi encerrado",
+                            message = "O servidor foi encerrado inesperadamente (código ${event.code}). " +
+                                "Veja o console para descobrir o motivo.",
+                            technical = "Exited(code=${event.code}) sem stopRequested",
+                        ),
                     )
                 }
             }
@@ -756,18 +859,91 @@ object ServerController {
         }
     }
 
-    private fun fail(message: String) {
-        appendLog("error", message)
+    /** Falha sem classificação específica (usada por eventos genéricos). */
+    private fun fail(message: String) = fail(
+        null,
+        StartFailure(problem = StartProblem.OTHER, title = "O servidor parou", message = message),
+    )
+
+    /**
+     * Registra a falha, encerra o processo e LIBERA a sessão: sem isso o app
+     * ficava preso em ERROR e a próxima tentativa não abria um processo novo.
+     */
+    private fun fail(s: Session?, failure: StartFailure) {
+        appendLog("error", failure.message)
+        if (failure.technical.isNotBlank()) {
+            appendLog("debug", "detalhe (${WorldDiagnosis.code(failure.problem)}): ${failure.technical}")
+        }
+        if (s != null) {
+            s.finished = true
+            s.process?.let { process ->
+                if (process.isAlive) process.destroy()
+            }
+            s.startJob?.let { if (it.isActive) it.cancel() }
+        }
+        if (s == null || session === s) {
+            session = null
+        }
         _state.update {
             it.copy(
                 status = ServerStatus.ERROR,
-                error = message,
+                failure = failure,
+                error = failure.message,
                 players = emptyList(),
                 avatars = emptyMap(),
                 pingHistory = emptyList(),
                 info = null,
                 startedAt = null,
             )
+        }
+    }
+
+    /** versionName/versionCode do APK instalado, para o diagnóstico. */
+    private fun appVersion(): Pair<String, Long> {
+        val context = appContext ?: return "?" to 0L
+        return try {
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            val code = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                info.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                info.versionCode.toLong()
+            }
+            (info.versionName ?: "?") to code
+        } catch (e: Exception) {
+            "?" to 0L
+        }
+    }
+
+    /** Linhas de diagnóstico da seleção/início para o relatório compartilhado. */
+    fun selectionDiagnostics(): List<String> {
+        val context = appContext ?: return listOf("config: contexto indisponível")
+        val config = Store.snapshot()
+        val repository = WorldRepository(context)
+        val facts = if (config.activeWorldId.isBlank()) null else repository.inspect(config.activeWorldId)
+        val version = appVersion()
+        val failure = _state.value.failure
+        return buildList {
+            add("Pacote: ${context.packageName} v${version.first} (code ${version.second})")
+            add("Seleção: ${config.activeWorldId.ifBlank { "<vazia>" }}")
+            add(
+                "Pasta: " +
+                    if (config.activeWorldId.isBlank()) {
+                        "-"
+                    } else {
+                        repository.directory(config.activeWorldId).absolutePath
+                    },
+            )
+            add(
+                "Estado: existe=${facts?.folderExists ?: false} level.dat=${facts?.hasLevelDat ?: false} " +
+                    "db=${facts?.dbFiles ?: 0} arquivo(s)",
+            )
+            add("Mundos listados: ${repository.list().size}")
+            add("Sessão: status=${_state.value.status} mundo=${runningWorldId ?: "-"}")
+            if (failure != null) {
+                add("Última falha: ${WorldDiagnosis.code(failure.problem)} — ${failure.title}")
+                if (failure.technical.isNotBlank()) add("Detalhe técnico: ${failure.technical}")
+            }
         }
     }
 

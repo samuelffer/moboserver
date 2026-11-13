@@ -51,6 +51,11 @@ object Diagnostics {
         } catch (e: Exception) {
             appendLine("falha ao listar interfaces: ${e.message}")
         }
+        appendLine()
+        appendLine("-- Seleção de mundo --")
+        for (line in ServerController.selectionDiagnostics()) {
+            appendLine(line)
+        }
         val lan = Net.lanIp()
         appendLine()
         appendLine("-- Rede --")
