@@ -1,7 +1,7 @@
 --- FAIL: TestAvatarFaceCrop (0.00s)
-    avatar_test.go:71: canto deveria ser transparente, alfa=255
+    avatar_test.go:63: PNG não é RGBA: *image.NRGBA
 FAIL
-FAIL	github.com/samuelffer/moboserver/server	0.178s
+FAIL	github.com/samuelffer/moboserver/server	0.100s
 ?   	github.com/samuelffer/moboserver/server/cmd/relay	[no test files]
-ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.237s
+ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.235s
 FAIL
