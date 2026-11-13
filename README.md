@@ -33,7 +33,7 @@ processo nativo do próprio app:
 * **Segundo plano**: serviço em primeiro plano + wake lock + Wi-Fi lock, com notificação
   permanente mostrando jogadores e porta.
 
-## Recursos da versão 1.2.0
+## Recursos da versão 1.2.1
 
 | Recurso | Detalhe |
 | --- | --- |
@@ -216,6 +216,12 @@ validação final é a primeira execução no seu celular. Se algo falhar, o con
 a mensagem de erro do servidor.
 
 ## Changelog
+
+### 1.2.1
+
+* O self-test passa a **exigir a sinalização NetherNet** (`/v1/join`) e registra
+  os dois listeners separadamente no arquivo de evidências do build. Antes, um
+  NetherNet fora do ar só gerava aviso.
 
 ### 1.2.0
 

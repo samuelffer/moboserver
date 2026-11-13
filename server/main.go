@@ -24,7 +24,7 @@ import (
 
 // appVersion is the version of the embedded server, kept in sync with the
 // Android app version by the build workflow.
-const appVersion = "1.2.0"
+const appVersion = "1.2.1"
 
 // options holds every command line flag the Android app passes to the server
 // process. Everything is explicit: the process never reads a config file, so

@@ -130,6 +130,19 @@ func runSelftest(opts options, log *slog.Logger) int {
 		fmt.Fprintf(os.Stderr, "selftest: interface %s (%s) respondeu no ping\n", target.Iface, target.IP)
 	}
 
+	// Transporte por endereco: o cliente Bedrock sonda /v1/join antes de cair no
+	// RakNet. O selftest exige que a sinalizacao esteja no ar, e nao apenas que o
+	// listener UDP tenha subido.
+	if opts.NetherNet {
+		if err := waitForSignaling(opts.Port, 5*time.Second); err != nil {
+			fmt.Fprintln(os.Stderr, "selftest: sinalizacao NetherNet:", err)
+			cancel()
+			<-done
+			return 1
+		}
+		fmt.Fprintf(os.Stderr, "selftest: sinalizacao NetherNet ok em TCP %d (/v1/join)\n", opts.Port)
+	}
+
 	if opts.SelftestTunnel {
 		if err := checkTunnelDiscovery(ctx, opts.Port, opts.Name); err != nil {
 			fmt.Fprintln(os.Stderr, "selftest: tunel:", err)
