@@ -1,25 +1,25 @@
-MoboServer - servidor de Minecraft Bedrock no seu celular
-=========================================================
+MoboServer — servidor de Minecraft Bedrock no seu celular
+==========================================================
 
-O que e este aplicativo?
+O que é este aplicativo?
 ------------------------
 O MoboServer transforma o seu celular Android em um servidor de Minecraft
-Bedrock. Voce abre o app, escolhe o mundo e o servidor fica no ar enquanto o
-celular estiver ligado, com internet e com o app em execucao (pode ficar em
-segundo plano, com uma notificacao permanente).
+Bedrock. Você importa um mundo exportado pelo Minecraft, abre o app e o
+servidor fica no ar enquanto o celular estiver ligado, com internet e com o app
+em execução (pode ficar em segundo plano, com uma notificação permanente).
 
-Conteudo deste ZIP
+Conteúdo deste ZIP
 ------------------
-- MoboServer-v<versao>.apk  -> instale este arquivo no celular
+- MoboServer-v<versão>.apk  -> instale este arquivo no celular
 - LEIA-ME.txt               -> este arquivo
-- LICENSE                   -> licenca do projeto (MIT)
+- LICENSE                   -> licença do projeto (MIT)
 
 Requisitos
 ----------
-- Android 8.0 (API 26) ou superior, 64 bits (arm64). O Minecraft Bedrock e
-  64 bits, entao aparelhos 32 bits nao sao suportados.
-- Conexao com internet (wi-fi ou dados moveis).
-- Espaco livre em disco para o mundo (alguns MB por mundo).
+- Android 8.0 (API 26) ou superior, 64 bits (arm64). O Minecraft Bedrock é
+  64 bits, então aparelhos 32 bits não são suportados.
+- Conexão com internet (wi-fi ou dados móveis).
+- Espaço livre em disco para o mundo (alguns MB por mundo).
 
 Como instalar
 -------------
@@ -30,119 +30,162 @@ Como instalar
 
 Primeiros passos
 ----------------
-1. Em "Mundos", crie um mundo novo (terreno natural ou superflat) ou importe
-   o seu mundo do Minecraft usando "Exportar mundo" (.mcworld).
-2. Em "Ajustes", defina nome, porta, numero de jogadores, modo de jogo e
+1. No Minecraft, abra o mundo que você quer hospedar e use "Exportar mundo"
+   (gera um arquivo .mcworld).
+2. No MoboServer, aba "Mundos" → "Importar mundo (.mcworld)". O app guarda uma
+   cópia do arquivo, confere o level.dat e a pasta db/ e só então libera o
+   mundo. Se algo estiver errado, ele diz exatamente o quê:
+     - "metadados incompatíveis": o mundo é válido, mas o level.dat tem dados
+       que esta versão do motor não lê;
+     - "importação incompleta": faltam arquivos do mundo (level.dat ou db/);
+     - "arquivo inválido": o arquivo escolhido não é um mundo Bedrock.
+3. Em "Ajustes", defina nome, porta, número de jogadores, modo de jogo e
    dificuldade.
-3. Na tela inicial, toque em "Ligar servidor".
-4. Toque em "Liberar porta" para tentar abrir a porta no roteador via UPnP.
-   Depois use "Testar acesso" para confirmar que o mundo esta acessivel pela
-   internet.
-5. Envie para os amigos o endereco mostrado (IP publico + porta).
+4. Na tela inicial, toque em "Ligar servidor". O servidor não cria mundo
+   sozinho: sem um mundo importado e validado ele não inicia.
+5. Envie aos amigos o endereço mostrado (IP + porta).
+
+Mundos importados
+-----------------
+- O app não gera mundo. Terreno, animais e estruturas vêm do mundo exportado
+  pelo Minecraft, exatamente como você deixou.
+- Tags novas no level.dat (por exemplo "editorLevelMigrationVersion") não
+  impedem mais a abertura: elas são recortadas por deslocamento de bytes sem
+  perder o conteúdo, o arquivo original fica salvo como "level.dat.original" e
+  as tags voltam ao arquivo quando o mundo é salvo. No próximo início, o
+  processo se repete.
+- Ao desligar o servidor o mundo é salvo. Abrir, jogar, salvar e reabrir deve
+  manter construções, inventário e entidades — se algo se perder, envie o
+  relatório de Console > Diagnóstico.
 
 Quem consegue entrar
 --------------------
 PC (Windows 10/11), Android e iPhone/iPad: Jogar > Servidores > Adicionar
-servidor > endereco IP + porta. Funciona de qualquer rede.
+servidor > endereço IP + porta. Essa entrada por endereço usa o transporte
+NetherNet, que é o padrão do app e foi validado na rede local com Minecraft for
+Windows 26.63.
 
-Xbox, PlayStation e Nintendo Switch: esses consoles NAO tem a opcao de digitar
-endereco (limitacao da Microsoft/Sony/Nintendo). Eles entram quando o servidor
-aparece na aba "LAN"/"Mundos", ou seja, com o console na MESMA rede Wi-Fi do
-celular. O MoboServer se anuncia sozinho nessa aba: ligue o servidor e abra o
-Minecraft no console.
+Xbox, PlayStation e Nintendo Switch: esses consoles NÃO têm a opção de digitar
+endereço (limitação da Microsoft/Sony/Nintendo). Eles entram quando o servidor
+aparece na aba "LAN"/"Mundos", com o console na MESMA rede Wi-Fi do celular.
+A aba LAN depende do transporte RakNet: ligue "Ajustes > Configurações
+avançadas > Compatibilidade RakNet". Ele vem desligado por padrão; sem ele, o
+servidor não se anuncia na LAN e quem entra usa endereço e porta.
 
 Acesso pela internet sem mexer no roteador
 ------------------------------------------
-O app tem um tunel UDP opcional. Ele precisa de um "relay" rodando em um
-servidor publico (veja relay/README.md no projeto). Tudo o que voce configura no
-celular e o endereco do relay e o token, em Ajustes. Com o tunel conectado, a
-tela inicial mostra o endereco publico para enviar aos amigos, e ele funciona de
-qualquer rede - inclusive quando o celular esta atras de CGNAT, porque quem
-inicia a conexao e o celular. Sem relay, LAN e redirecionamento de porta
-continuam funcionando normalmente.
+O app tem um túnel UDP opcional. Ele precisa de um "relay" rodando em um
+servidor público (veja relay/README.md no projeto). No celular você configura
+somente o endereço do relay e o token, em Ajustes. Com o túnel conectado, a
+tela inicial mostra o endereço público para enviar aos amigos.
 
-Entrada pelo endereco (cartao na tela inicial)
+Esse túnel encaminha UDP/RakNet. Entrada NetherNet por outra rede exigiria
+sinalização HTTP + ICE/WebRTC no lado público, o que não está implementado nem
+validado: o app não mostra esse caminho como disponível.
+
+Entrada pelo endereço (cartão na tela inicial)
 ----------------------------------------------
 Quando o servidor liga, o app verifica cada etapa separadamente e mostra no
-cartao "Entrada pelo endereco":
+cartão "Entrada pelo endereço":
 
-  Servidor RakNet (UDP 19132) ..... o servidor responde aos pings do jogo
-  Sinalizacao HTTP (GET /v1/join) . o cliente que digita o endereco recebe o
-                                    nome e a versao do servidor
-  Negociacao ICE .................. o servidor consegue montar a conexao e
-                                    listar os enderecos locais
-  Entrada no mundo ................ nao verificada: so o Minecraft, conectando
+  Transportes ativos .............. NetherNet (padrão) e, se ligado, RakNet
+  Sinalização HTTP (GET /v1/join) . o cliente que digita o endereço recebe o
+                                    nome e a versão do servidor (o app mostra
+                                    também o tempo de resposta em ms)
+  Negociação ICE .................. o servidor consegue montar a conexão e
+                                    listar os endereços locais
+  Entrada no mundo ................ não verificada: só o Minecraft, conectando
                                     de verdade, comprova isso
 
-Se a "Negociacao ICE" aparecer em vermelho, o problema esta no proprio aparelho
-e o app mostra o texto do erro. Se as tres primeiras estiverem verdes e o jogo
-nao entrar, o problema esta entre os dois aparelhos (rede, firewall ou versao do
-Minecraft) - nao no servidor.
+Se a "Negociação ICE" aparecer em vermelho, o problema está no próprio aparelho
+e o app mostra o texto do erro. Se as etapas verdes e o jogo não entrar, o app
+NÃO sabe dizer a causa: pode ser a rede entre os aparelhos, um firewall ou a
+versão do Minecraft. Isso continua sendo hipótese, não diagnóstico.
 
-Versao do Minecraft e NetherNet
+Versão do Minecraft e NetherNet
 -------------------------------
 O servidor fala Bedrock 1.26.60 (protocolo 2225). O cliente precisa ser
-compativel; a tela inicial do app mostra a versao e o protocolo em uso. Um
+compatível; a tela inicial do app mostra a versão e o protocolo em uso. Um
 cliente Java Edition nunca conecta (protocolo diferente).
 
-Alem do RakNet (UDP 19132), o servidor abre o transporte NetherNet na mesma
-porta: sinalizacao HTTP em http://IP:19132/v1/join e midia em UDP
-19133-19140. Clientes atuais sondam esse endereco antes de cair no RakNet; sem
-ele, a tela fica em "localizando servidor". Se o app perguntar ou o sistema
-avisar que a conexao nao e segura, aceite: ali nao ha certificado de dominio
-publico.
+O servidor abre o transporte NetherNet na mesma porta: sinalização HTTP em
+http://IP:19132/v1/join e mídia em UDP 19133-19140. Clientes atuais sondam esse
+endereço antes de cair no RakNet; sem ele, a tela fica em "localizando
+servidor". Se o sistema avisar que a conexão não é segura, aceite: ali não há
+certificado de domínio público.
 
-Se ninguem conseguir entrar
-----------------------------
-0. Confira a versao do Minecraft do outro aparelho e, no PC, rode o teste de UDP
-   descrito em docs/diagnostico-pc.md. Ele separa "o servidor nao responde" de
-   "a rede nao entrega o pacote".
-1. Ligue o servidor e olhe o cartao "Acesso pela internet".
-2. "Auto-teste" mostra os enderecos em que o servidor respondeu vistos de
-   dentro do celular. Se aparecer "o celular nao respondeu", desligue VPN e
-   apps de firewall do aparelho.
-3. "Teste no PC" mostra um endereco http://IP:8080. Abra no navegador de outro
+Painel de jogadores
+-------------------
+- Cabeça da skin de cada jogador (com camada externa composta), nome na fonte
+  pixelada Silkscreen (SIL Open Font License 1.1) e três barras com o ping.
+- Quando o transporte não informa a latência, aparece "Sem medição" em vez de
+  um número inventado.
+- "LAN" no canto da miniatura é uma inferência pelo endereço do jogador: o
+  protocolo não diz por qual transporte ele entrou.
+- Aba "Conexão": mediana do "Ping dos jogadores" e faixa mín/máx dos últimos
+  60 s, separada dos testes de rede feitos pelo celular.
+
+Se ninguém conseguir entrar
+---------------------------
+0. Confira a versão do Minecraft do outro aparelho e, no PC, rode o teste de UDP
+   descrito em docs/diagnostico-pc.md. Ele separa "o servidor não responde" de
+   "a rede não entrega o pacote".
+1. Ligue o servidor e olhe o cartão "Acesso pela internet".
+2. "Auto-teste" mostra os endereços em que o servidor respondeu vistos de
+   dentro do celular. Se aparecer "o celular não respondeu", verifique VPN e
+   apps de firewall do aparelho (é verificação, não conclusão).
+3. "Teste no PC" mostra um endereço http://IP:8080. Abra no navegador de outro
    aparelho na MESMA rede:
-   - a pagina abre: a rede local esta ok, use IP:19132 no Minecraft;
-   - a pagina nao abre: o roteador esta isolando os aparelhos (isolamento de
-     AP, rede de visitantes ou redes diferentes). Coloque os dois na mesma
-     rede Wi-Fi ou desative o isolamento no painel do roteador.
-4. Console > Diagnostico gera um relatorio completo (aparelho, interfaces,
+   - a página abre: a rede local entregou o pacote, use IP:porta no Minecraft;
+   - a página não abre: vale investigar isolamento de AP, rede de visitantes ou
+     redes diferentes.
+4. Console > Diagnóstico gera um relatório completo (aparelho, interfaces,
    IPs, gateway, log) e abre o compartilhamento do Android.
 
 Se o login da Microsoft falhar
--------------------------------
-O servidor verifica o login do Xbox ao ligar. Se essa verificacao falhar, ele
-NAO sobe e mostra o erro exato (DNS, TLS, HTTP). Isso e proposital: entrar sem
-verificar a conta so acontece se voce ligar "Modo aberto se o login falhar" em
-Ajustes, e o console avisa em amarelo quando esse modo esta ativo.
+------------------------------
+O servidor verifica o login do Xbox ao ligar. Se essa verificação falhar, ele
+NÃO sobe e mostra o erro exato (DNS, TLS, HTTP). Isso é proposital: entrar sem
+verificar a conta só acontece se você ligar "Modo aberto se o login falhar" em
+Ajustes, e o console avisa em amarelo quando esse modo está ativo.
 
 Se o app fechar sozinho
-------------------------
-Na proxima vez que abrir, o MoboServer mostra o relatorio da falha, com os
-botoes "Copiar" e "Compartilhar". Em Ajustes > Diagnostico voce tambem testa o
-servidor embutido e ve se o aparelho consegue executa-lo.
+-----------------------
+Na próxima vez que abrir, o MoboServer mostra o relatório da falha, com os
+botões "Copiar" e "Compartilhar". Em Ajustes > Diagnóstico você também testa o
+servidor embutido e vê se o aparelho consegue executá-lo.
+
+Console
+-------
+Por padrão aparecem INFO, avisos e erros. As linhas DEBUG só aparecem com
+"Ajustes > Configurações avançadas > Diagnóstico avançado" ligado — útil para
+investigar um problema, barulhento no uso normal.
 
 Dicas de desempenho
 -------------------
 - Quanto mais forte o celular, mais jogadores ele suporta. Para um aparelho
-  modesto, 2 a 4 jogadores e o ideal.
-- Reduza a "distancia de visao" nos ajustes para gastar menos memoria.
-- Libere o app da otimizacao de bateria (Ajustes > Liberar bateria).
-- Mantenha o celular carregando durante sessoes longas.
+  modesto, 2 a 4 jogadores é o ideal.
+- Reduza a "distância de visão" nos ajustes para gastar menos memória.
+- Libere o app da otimização de bateria (Ajustes > Liberar bateria).
+- Mantenha o celular carregando durante sessões longas.
 
-Limitacoes conhecidas
+Limitações conhecidas
 ---------------------
-- Alguns provedores usam CGNAT (IP compartilhado). Nesse caso o acesso externo
-  direto nao funciona e o servidor fica restrito a rede local.
-- O UPnP depende do roteador; se ele nao suportar, a porta deve ser liberada
+- Alguns provedores usam CGNAT (IP compartilhado). O app não consegue afirmar
+  pelo teste de STUN se é o seu caso; se o acesso externo direto não funcionar,
+  o túnel UDP é a alternativa.
+- O UPnP depende do roteador; se ele não suportar, a porta deve ser liberada
   manualmente.
-- O servidor precisa de internet ativa: a verificacao de login do Xbox Live
-  acontece no inicio. Se o servico da Microsoft estiver inacessivel na sua rede,
-  o servidor sobe em "modo aberto" (sem exigir conta Xbox) e avisa na tela.
+- O servidor precisa de internet ativa para a verificação de login do Xbox Live.
+  Com "Modo aberto" desligado (padrão), ele não inicia quando a verificação
+  falha.
+- A entrada NetherNet vinda de outra rede não está validada nem implementada
+  pelo túnel atual.
 
-Licenca e creditos
+Licença e créditos
 ------------------
-Codigo do app e do servidor embutido: MIT (veja LICENSE).
+Código do app e do servidor embutido: MIT (veja LICENSE).
 Servidor Minecraft Bedrock: Dragonfly (https://github.com/df-mc/dragonfly), MIT.
-Minecraft e uma marca da Mojang/Microsoft. Este projeto nao e afiliado a Mojang.
+Fonte Silkscreen: The Silkscreen Project Authors, SIL Open Font License 1.1
+(texto completo em assets/licenses/SILKSCREEN-OFL.txt dentro do app).
+Minecraft é uma marca da Mojang/Microsoft. Este projeto não é afiliado à Mojang.

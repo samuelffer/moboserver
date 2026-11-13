@@ -18,7 +18,7 @@ processo nativo do próprio app:
 ┌──────────────────────────── MoboServer (APK) ────────────────────────────┐
 │  UI Compose  ──►  ServerController  ──►  Processo do servidor (Go)       │
 │      ▲                    │                        │                     │
-│      │              Estado/eventos                 │ RakNet/UDP 19132    │
+│      │              Estado/eventos                 │ NetherNet + UDP     │
 │      └────────────────────┘  (JSON por stdin/out)  ▼                     │
 │                                          Minecraft Bedrock dos amigos    │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -26,12 +26,27 @@ processo nativo do próprio app:
 
 * **Sem instalar nada**: o binário do servidor viaja dentro do APK, na pasta de bibliotecas
   nativas (o único lugar em que o Android permite executar arquivos de um app).
-* **Mundos reais**: o formato do mundo é o LevelDB do Bedrock, então mundos importados
-  (`.mcworld`) funcionam direto e o mundo criado no app pode ser exportado/aberto no Minecraft.
+* **Mundos reais**: o formato do mundo é o LevelDB do Bedrock, então o `.mcworld` exportado
+  pelo Minecraft abre direto, com construções, inventário e entidades. O app não gera mundo:
+  a criação (terreno, animais) acontece no próprio Minecraft.
 * **Controle total**: ligar/desligar, console ao vivo, jogadores online, expulsar/banir,
   salvar o mundo, ajustes de jogo.
 * **Segundo plano**: serviço em primeiro plano + wake lock + Wi-Fi lock, com notificação
   permanente mostrando jogadores e porta.
+
+## Recursos da versão 1.4.0
+
+| Recurso | Detalhe |
+| --- | --- |
+| Mundo importado é o único caminho | Sem gerador no app e sem "Mundo principal" automático: importe o `.mcworld` e o servidor só inicia com um mundo validado |
+| `level.dat` tolerante | Tags escritas por versões novas do jogo (`editorLevelMigrationVersion`, …) deixam de impedir a abertura: são recortadas por deslocamento de bytes, guardadas em `level.dat.original` e reaplicadas quando o mundo é salvo |
+| Três erros de importação | "metadados incompatíveis", "importação incompleta" (level.dat/db/) e "arquivo inválido", cada um com sua mensagem |
+| `.mcworld` preservado | O ZIP enviado fica copiado junto do mundo (`original.mcworld`), o arquivo original do usuário nunca é alterado |
+| Painel de jogadores | Cabeça da skin (camada externa composta, 64×64, nítida), nick em fonte pixelada (Silkscreen/OFL) e três barras com o ping em ms |
+| Ping por jogador | `Player.Latency()` a cada 3 s; sem medição o app mostra "Sem medição" em vez de um número inventado |
+| Aba Conexão | "Ping dos jogadores" (mediana + faixa mín/máx dos últimos 60 s), separado dos testes de rede local/relay |
+| Transportes | NetherNet é o padrão; **Compatibilidade RakNet** fica em Configurações avançadas, desligada por padrão (é ela que alimenta a aba LAN) |
+| Console limpo | INFO, avisos e erros por padrão; DEBUG só com "Diagnóstico avançado" |
 
 ## Recursos da versão 1.3.0
 
@@ -60,9 +75,9 @@ processo nativo do próprio app:
 
 | Arquivo | Tamanho | SHA-256 |
 | --- | --- | --- |
-| [`releases_apk/MoboServer-v1.3.0-android-arm64.zip`](releases_apk/MoboServer-v1.3.0-android-arm64.zip) | 18,8 MB | `08eca57b7daed180f60b31eb016da839dea9e4288208c94893a5779413e5fa2e` |
+| [`releases_apk/MoboServer-v1.4.0-android-arm64.zip`](releases_apk/MoboServer-v1.4.0-android-arm64.zip) | a confirmar | `0000000000000000000000000000000000000000000000000000000000000000` |
 
-O ZIP contém `MoboServer-v1.3.0.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
+O ZIP contém `MoboServer-v1.4.0.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
 (`apksigner verify` roda no CI) e as próximas versões instalam por cima desta.
 
 ## Instalação
@@ -71,15 +86,15 @@ Copie o APK do ZIP para o celular e abra o arquivo — o Android vai pedir permi
 instalar apps de fontes desconhecidas. Para conferir o download, compare o SHA-256 acima:
 
 ```bash
-sha256sum MoboServer-v1.3.0-android-arm64.zip
+sha256sum MoboServer-v1.4.0-android-arm64.zip
 ```
 
 ## Quem consegue entrar
 
 | Plataforma | Como entrar |
 | --- | --- |
-| **PC (Windows 10/11)**, **Android**, **iPhone/iPad** | *Jogar → Servidores → Adicionar servidor* com o IP e a porta. Funciona de qualquer rede, desde que a porta esteja liberada. |
-| **Xbox, PlayStation, Nintendo Switch** | Esses consoles **não têm** o botão de adicionar servidor (limitação de Microsoft/Sony/Nintendo). Eles entram quando o servidor aparece na aba **LAN/Mundos**, ou seja, com o console **na mesma rede Wi-Fi** do celular — é para isso que o app se anuncia sozinho na LAN. |
+| **PC (Windows 10/11)**, **Android**, **iPhone/iPad** | *Jogar → Servidores → Adicionar servidor* com o IP e a porta (entrada por endereço, transporte **NetherNet** — o padrão). Validado na LAN com Minecraft for Windows 26.63. |
+| **Xbox, PlayStation, Nintendo Switch** | Esses consoles **não têm** o botão de adicionar servidor (limitação de Microsoft/Sony/Nintendo). Eles entram quando o servidor aparece na aba **LAN/Mundos**, com o console **na mesma rede Wi-Fi** do celular. A aba LAN depende do transporte RakNet: ligue **Ajustes → Configurações avançadas → Compatibilidade RakNet** (desligada por padrão). |
 
 O servidor é Bedrock puro: **não** aceita Minecraft Java (PC Java), a não ser através de
 tradutores como o Geyser, que não vêm incluídos.
@@ -242,6 +257,35 @@ a mensagem de erro do servidor.
 * Testes novos: interfaces injetadas, coleta de ICE pela lista injetada, SDP,
   faixa de portas e chave P-384. O self-test falha se a sinalização ou o ICE não
   funcionarem.
+
+### 1.4.0
+
+* **Importar mundo é o único caminho**: o gerador do app e a criação automática do
+  "Mundo principal" saíram. O servidor só inicia com um mundo importado e validado
+  (`level.dat` + `db/`), verificado pelo próprio binário com `-validate-world`.
+* **`level.dat` tolerante**: `prepareLevelDat` lê as tags de topo, recorta só as que a
+  struct do Dragonfly não conhece (tipo e valor preservados byte a byte), guarda
+  `level.dat.original` e reaplica as tags antes do `TAG_End` quando o motor salva. No
+  reinício seguinte, o recorte é refeito e as tags continuam voltando ao arquivo.
+  A mensagem do decodificador vem como caminho (`'.tag'` ou `'.pai.filho'`), então uma
+  tag desconhecida dentro de um composto preserva o composto inteiro.
+  Testes: `TestLevelDatAcceptsEditorTag`, `TestLevelDatAcceptsDottedTag`,
+  `TestLevelDatWithoutExtraTagsNeedsNoFix`, `TestValidateWorldCodes`.
+* **Miniaturas de skin**: `server/avatar.go` recorta a cabeça (layouts 64×64, 64×32 e
+  128×128), compõe a camada externa com source-over, ignora a área preta opaca das skins
+  clássicas, devolve PNG 64×64 nítido e recusa Persona/geometria personalizada com
+  "Prévia indisponível" explicado. O evento `player_avatar` só vai na entrada e na troca
+  de skin.
+* **Ping real por jogador**: `Player.Latency()` via `player.Call`, amostrado a cada 3 s,
+  com `-1` virando "Sem medição" na interface.
+* **Aba Conexão** com "Ping dos jogadores" (mediana e faixa mín/máx dos últimos 60 s),
+  separada dos testes de rede local e do túnel/relay.
+* **Transportes**: NetherNet ligado, RakNet opcional e desligado por padrão; o evento
+  `ready` informa `transports`, e o self-test cobre os dois modos.
+* **Console**: filtro por nível no processo Go (`-log-level`, padrão `info`), DEBUG só
+  com Diagnóstico avançado.
+* **Fontes**: nomes de jogador na Silkscreen (SIL OFL 1.1), com a licença em
+  `assets/licenses/SILKSCREEN-OFL.txt`.
 
 ### 1.2.1
 

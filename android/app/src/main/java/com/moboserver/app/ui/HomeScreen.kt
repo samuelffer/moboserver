@@ -153,6 +153,7 @@ fun HomeScreen(
             state = state,
             running = running,
             port = port,
+            externalHost = config.externalHost,
             onForward = onForwardPort,
             onCheck = onCheckAccess,
             onCopy = { text -> clipboard.setText(AnnotatedString(text)) },
@@ -486,6 +487,7 @@ private fun ExposureCard(
     state: RuntimeState,
     running: Boolean,
     port: Int,
+    externalHost: String = "",
     onForward: () -> Unit,
     onCheck: () -> Unit,
     onCopy: (String) -> Unit,
@@ -523,6 +525,16 @@ private fun ExposureCard(
             value = exposure.publicIp?.let { "$it:$port" } ?: "ainda não descoberto",
             mono = true,
         )
+        // Entrada NetherNet de outra rede não é oferecida: exigiria sinalização
+        // HTTP + ICE/WebRTC no relay, o que não existe nem foi validado.
+        InfoLine(
+            label = "De outra rede",
+            value = "NetherNet não validado; só o túnel UDP/RakNet funciona",
+            valueColor = MoboColors.Warning,
+        )
+        if (externalHost.isNotBlank()) {
+            InfoLine(label = "Domínio", value = externalHost, mono = true)
+        }
         if (exposure.wanIp != null && exposure.wanIp != exposure.publicIp) {
             InfoLine(label = "Roteador diz", value = exposure.wanIp, mono = true)
         }
