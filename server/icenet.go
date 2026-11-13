@@ -200,7 +200,25 @@ func (n *iceNetwork) ListenUDP(network string, laddr *net.UDPAddr) (transport.UD
 }
 
 func (n *iceNetwork) ListenTCP(network string, laddr *net.TCPAddr) (transport.TCPListener, error) {
-	return net.ListenTCP(network, laddr)
+	l, err := net.ListenTCP(network, laddr)
+	if err != nil {
+		return nil, err
+	}
+	return tcpListener{TCPListener: l}, nil
+}
+
+// tcpListener adapts *net.TCPListener to transport.TCPListener: the standard
+// AcceptTCP returns *net.TCPConn, the interface expects transport.TCPConn.
+type tcpListener struct {
+	*net.TCPListener
+}
+
+func (l tcpListener) AcceptTCP() (transport.TCPConn, error) {
+	conn, err := l.TCPListener.AcceptTCP()
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
 }
 
 func (n *iceNetwork) Dial(network, address string) (net.Conn, error) {
