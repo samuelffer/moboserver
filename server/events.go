@@ -25,6 +25,31 @@ import (
 // JSON. Stderr is redirected into stdout by the app as well.
 var emitMu sync.Mutex
 
+// minLogLevel filters what reaches the app. INFO is the default (so the console
+// is readable); DEBUG is only enabled from "Diagnostico avancado" in the app.
+var minLogLevel = slog.LevelInfo
+
+// setMinLogLevel changes the minimum level written to the app.
+func setMinLogLevel(level slog.Level) {
+	emitMu.Lock()
+	minLogLevel = level
+	emitMu.Unlock()
+}
+
+// levelValue converts the level name used in events to a slog level.
+func levelValue(name string) slog.Level {
+	switch name {
+	case "debug":
+		return slog.LevelDebug
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
 func emit(v any) {
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -37,7 +62,16 @@ func emit(v any) {
 }
 
 func emitLog(level, msg string) {
+	if levelValue(level) < currentLogLevel() {
+		return
+	}
 	emit(map[string]any{"t": "log", "lvl": level, "msg": msg})
+}
+
+func currentLogLevel() slog.Level {
+	emitMu.Lock()
+	defer emitMu.Unlock()
+	return minLogLevel
 }
 
 // eventHandler is a slog.Handler that forwards Dragonfly's log records to the
@@ -48,7 +82,7 @@ type eventHandler struct{}
 // reports read/handshake errors only at debug level, and those records carry
 // the remote address, which is the only evidence available when a client
 // cannot reach the server.
-func (eventHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+func (eventHandler) Enabled(_ context.Context, l slog.Level) bool { return l >= currentLogLevel() }
 
 func (eventHandler) Handle(_ context.Context, r slog.Record) error {
 	msg := r.Message

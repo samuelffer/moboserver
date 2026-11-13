@@ -15,6 +15,7 @@ import (
 
 	"github.com/df-mc/dragonfly/server/player"
 	"github.com/df-mc/dragonfly/server/player/chat"
+	"github.com/df-mc/dragonfly/server/player/skin"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/google/uuid"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
@@ -22,17 +23,25 @@ import (
 )
 
 // playerInfo is the JSON shape shared with the Android app.
+//
+// Ping is the round-trip time reported by the session in milliseconds, or -1
+// when the transport does not expose a measurement (the app then shows "Sem
+// medição" instead of inventing a value). Transport is filled only when the
+// version of Dragonfly exposes which listener accepted the connection.
 type playerInfo struct {
-	Name   string `json:"name"`
-	XUID   string `json:"xuid"`
-	Device string `json:"device"`
-	Addr   string `json:"addr"`
-	Since  int64  `json:"since"`
+	Name      string `json:"name"`
+	XUID      string `json:"xuid"`
+	Device    string `json:"device"`
+	Addr      string `json:"addr"`
+	Since     int64  `json:"since"`
+	Ping      int64  `json:"ping"`
+	Transport string `json:"transport,omitempty"`
 }
 
 type playerEntry struct {
 	playerInfo
-	handle *world.EntityHandle
+	handle     *world.EntityHandle
+	avatarHash string
 }
 
 // registry keeps track of the players that are currently online. Player
@@ -48,8 +57,57 @@ func newRegistry() *registry { return &registry{m: map[uuid.UUID]*playerEntry{}}
 func (r *registry) add(id uuid.UUID, h *world.EntityHandle, info playerInfo) playerInfo {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	info.Ping = -1
 	r.m[id] = &playerEntry{playerInfo: info, handle: h}
 	return info
+}
+
+// setPing stores the latest latency sample for one player.
+func (r *registry) setPing(id uuid.UUID, ms int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if e, ok := r.m[id]; ok {
+		e.Ping = ms
+	}
+}
+
+func (r *registry) setAvatar(id uuid.UUID, hash string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if e, ok := r.m[id]; ok {
+		e.avatarHash = hash
+	}
+}
+
+func (r *registry) avatarHash(id uuid.UUID) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if e, ok := r.m[id]; ok {
+		return e.avatarHash
+	}
+	return ""
+}
+
+// handles returns a snapshot of the entity handles by player id.
+func (r *registry) handles() map[uuid.UUID]*world.EntityHandle {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make(map[uuid.UUID]*world.EntityHandle, len(r.m))
+	for id, e := range r.m {
+		out[id] = e.handle
+	}
+	return out
+}
+
+// ids returns the ids of the players that have an avatar cached.
+func (r *registry) ids() []uuid.UUID {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]uuid.UUID, 0, len(r.m))
+	for id := range r.m {
+		out = append(out, id)
+	}
+	return out
 }
 
 func (r *registry) remove(id uuid.UUID) (playerInfo, bool) {
@@ -85,15 +143,26 @@ func (r *registry) snapshot() []playerInfo {
 	return out
 }
 
-// joinHandler is installed on every player. It only needs to know when the
-// player disconnects so the registry and the app stay in sync.
+// joinHandler is installed on every player. It keeps the registry and the app
+// in sync (quit, skin changes).
 type joinHandler struct {
 	player.NopHandler
-	reg *registry
+	rt *runtime
+}
+
+// HandleSkinChange re-renders the avatar when the player changes skin during the
+// session. Dragonfly delivers the new skin here, so the thumbnail never goes
+// stale while the player is online.
+func (h *joinHandler) HandleSkinChange(ctx *player.Context, s *skin.Skin) {
+	if h.rt == nil || s == nil {
+		return
+	}
+	p := ctx.Player()
+	h.rt.emitAvatar(p.UUID(), p.Name(), p.XUID(), *s)
 }
 
 func (h *joinHandler) HandleQuit(p *player.Player) {
-	info, ok := h.reg.remove(p.UUID())
+	info, ok := h.rt.reg.remove(p.UUID())
 	if !ok {
 		return
 	}

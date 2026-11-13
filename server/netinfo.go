@@ -86,7 +86,8 @@ type signallingInfo struct {
 	Version  string `json:"version,omitempty"`
 	Players  int    `json:"players,omitempty"`
 	Max      int    `json:"max,omitempty"`
-	Body     string `json:"body,omitempty"`
+	Body      string `json:"body,omitempty"`
+	LatencyMS int64  `json:"latencyMs,omitempty"`
 }
 
 // waitForSignaling verifies the NetherNet signaling endpoint on the game port.
@@ -113,6 +114,7 @@ func waitForSignaling(port int, timeout time.Duration) (signallingInfo, error) {
 			time.Sleep(300 * time.Millisecond)
 			continue
 		}
+		requestStart := time.Now()
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 		_ = resp.Body.Close()
 		info.Status = resp.StatusCode
@@ -157,8 +159,29 @@ func waitForSignaling(port int, timeout time.Duration) (signallingInfo, error) {
 			continue
 		}
 		info.Name, info.Protocol, info.Version = status.Name, status.Protocol, status.Version
+		info.LatencyMS = time.Since(requestStart).Milliseconds()
 		info.Players, info.Max = status.Players, status.MaxPlayerCount
 		return info, nil
 	}
 	return info, fmt.Errorf("sinalizacao NetherNet em %s nao ok: %w", url, lastErr)
+}
+
+// probeSignaling checks the NetherNet signaling endpoint on every local address.
+// It is used instead of the RakNet ping when the legacy transport is off, so the
+// self test never reports "no answer" for a transport that is not running.
+func probeSignaling(port int, targets []lanTarget) []lanTarget {
+	client := &http.Client{Timeout: 2 * time.Second}
+	for i := range targets {
+		url := fmt.Sprintf("http://%s/v1/join", net.JoinHostPort(targets[i].IP, strconv.Itoa(port)))
+		resp, err := client.Get(url)
+		if err != nil {
+			continue
+		}
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			targets[i].OK = true
+		}
+	}
+	return targets
 }

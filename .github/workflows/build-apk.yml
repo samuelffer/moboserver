@@ -49,16 +49,23 @@ jobs:
             go vet ./...
             go test ./...
             go build -trimpath -o /tmp/mobosrv .
+            # Evidencias nominais das correcoes desta rodada (level.dat com tag
+            # extra, validacao de mundo, recorte de avatar).
+            go test -v -count=1 -run 'TestLevelDat|TestValidateWorld|TestAvatar|TestNbtSkip' .
             /tmp/mobosrv -version
           # O self-test sobe um servidor real, carrega um mundo gerado, faz um
           # ping RakNet e desliga. Falha o build se qualquer parte quebrar.
           # Descoberta LAN: o payload do "Unconnected Pong" (o que o cliente
           # Bedrock le na aba LAN) e validado campo a campo, tanto na porta
           # padrao quanto em uma porta personalizada.
+          # Padrao de entrega: NetherNet ligado, RakNet desligado. O self-test
+          # valida a sinalizacao HTTP e a coleta de candidatos ICE.
           /tmp/mobosrv -selftest -port 19132
           /tmp/mobosrv -selftest -port 19555
+          # Compatibilidade RakNet ligada: valida tambem o ping de descoberta.
+          /tmp/mobosrv -selftest -port 19134 -raknet
           # Tunel: relay local + cliente + ping RakNet pela porta publica.
-          /tmp/mobosrv -selftest -port 19132 -selftest-tunnel
+          /tmp/mobosrv -selftest -port 19136 -raknet -selftest-tunnel
           } 2>&1 | tee /tmp/go-check.log
 
       - name: "Registrar evidencias dos testes"
@@ -70,7 +77,7 @@ jobs:
             echo "Commit: ${GITHUB_SHA}"
             echo "Data: $(date -u +%FT%TZ)"
             echo
-            grep -E "^ok |selftest:|SELFTEST OK|Listener |Sinalizacao NetherNet|ICE (ok|falhou)|Interfaces repassadas" /tmp/go-check.log 2>/dev/null || true
+            grep -E "^ok |selftest:|SELFTEST OK|Listener |Sinalizacao NetherNet|ICE (ok|falhou)|Interfaces repassadas|--- (PASS|FAIL)" /tmp/go-check.log 2>/dev/null || true
           } > docs/test-evidence.txt
           cat docs/test-evidence.txt
 

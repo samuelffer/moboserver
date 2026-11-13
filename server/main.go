@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,6 +14,10 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/df-mc/dragonfly/server/player"
+	"github.com/df-mc/dragonfly/server/player/skin"
+	"github.com/google/uuid"
 
 	"github.com/df-mc/dragonfly/server"
 	"github.com/df-mc/dragonfly/server/block"
@@ -49,7 +54,13 @@ type options struct {
 	AllowOpen      bool
 	NetherNet      bool
 	NetherNetPorts string
-	IfaceFile      string
+	// RakNet liga o transporte antigo (UDP 19132 + descoberta na rede local).
+	// Fica desligado por padrao: o caminho validado com o Bedrock 26.63 e o
+	// NetherNet. A descoberta automatica na aba LAN depende dele.
+	RakNet     bool
+	LogLevel   string
+	ValidateWorld string
+	IfaceFile  string
 	Selftest     bool
 	SelftestTunnel bool
 	ShowVersion  bool
@@ -78,7 +89,13 @@ func parseFlags() options {
 	flag.BoolVar(&o.AllowOpen, "allow-open", false,
 		"start without Xbox authentication when the login service is unreachable")
 	flag.BoolVar(&o.NetherNet, "nethernet", true,
-		"also listen on the NetherNet transport (clients joining by address probe it first)")
+		"listen on the NetherNet transport (signaling + WebRTC, used by clients joining by address)")
+	flag.BoolVar(&o.RakNet, "raknet", false,
+		"also listen on the legacy RakNet transport (UDP 19132 + LAN discovery); off by default")
+	flag.StringVar(&o.LogLevel, "log-level", "info",
+		"minimum log level sent to the app: debug, info, warn or error")
+	flag.StringVar(&o.ValidateWorld, "validate-world", "",
+		"validate a world folder, fix level.dat metadata and print the result as JSON, then exit")
 	flag.StringVar(&o.NetherNetPorts, "nethernet-ports", "19133-19140",
 		"UDP ports used by NetherNet player connections")
 	flag.StringVar(&o.IfaceFile, "ifaces", "",
@@ -99,6 +116,39 @@ func main() {
 	if opts.ShowVersion {
 		fmt.Printf("mobosrv %s dragonfly %s bedrock %s protocol %d\n", appVersion, dragonflyVersion(), protocol.CurrentVersion, protocol.CurrentProtocol)
 		return
+	}
+
+	if lvl := strings.ToLower(strings.TrimSpace(opts.LogLevel)); lvl != "" {
+		if lvl == "debug" {
+			setMinLogLevel(slog.LevelDebug)
+		} else {
+			setMinLogLevel(levelValue(lvl))
+		}
+	}
+
+	if opts.ValidateWorld != "" {
+		res := validateWorldDir(opts.ValidateWorld)
+		emit(map[string]any{
+			"t":              "world_validation",
+			"ok":             res.OK,
+			"code":           res.Code,
+			"detail":         res.Detail,
+			"levelName":      res.LevelName,
+			"fixedTags":      res.FixedTags,
+			"storageVersion": res.StorageVersion,
+			"dbFiles":        res.DbFiles,
+			"worldBytes":     res.WorldBytes,
+		})
+		switch res.Code {
+		case "":
+			os.Exit(0)
+		case worldCodeIncompatible:
+			os.Exit(3)
+		case worldCodeIncomplete:
+			os.Exit(4)
+		default:
+			os.Exit(5)
+		}
 	}
 
 	logger := slog.New(eventHandler{})
@@ -165,18 +215,37 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 		emitLog("warn", "Lista de banidos não pôde ser carregada: "+err.Error())
 	}
 
+	// Metadados do level.dat: versoes novas do jogo escrevem tags que a struct
+	// do Dragonfly nao conhece e o mundo deixa de abrir. As tags sao recortadas
+	// sem perder o conteudo, o level.dat original fica ao lado
+	// (level.dat.original) e elas voltam ao arquivo quando o mundo e salvo.
+	levelFix, fixErr := prepareLevelDat(filepath.Join(opts.World, "level.dat"))
+	if fixErr != nil {
+		return fixErr
+	}
+	if levelFix != nil {
+		emitLog("warn", fmt.Sprintf("level.dat tem metadados que o motor não lê (%s). "+
+			"Eles foram preservados em level.dat.original e voltam ao arquivo ao salvar.",
+			strings.Join(levelFix.Names, ", ")))
+	}
+	defer func() {
+		if levelFix == nil {
+			return
+		}
+		if err := levelFix.restore(); err != nil {
+			emitLog("error", "Não foi possível reaplicar os metadados do level.dat: "+err.Error())
+			return
+		}
+		emitLog("info", fmt.Sprintf("Metadados do level.dat reaplicados ao salvar (%s)",
+			strings.Join(levelFix.Names, ", ")))
+	}()
+
 	uc := server.DefaultConfig()
 	uc.Network.Address = fmt.Sprintf("0.0.0.0:%d", opts.Port)
-	// RakNet (UDP) e o transporte historico. Clientes atuais que entram por
-	// endereco sondam antes o endpoint NetherNet: HTTPS em /v1/join na porta do
-	// jogo (e em 443/80 quando a porta e 19132) e so depois caem para o RakNet.
-	// Se ninguem responde, a sondagem demora e o cliente fica em "localizando
-	// servidor"; por isso o NetherNet tambem e servido, na mesma porta do jogo.
-	// RakNet (UDP) e o transporte historico. O NetherNet e montado em
-	// server/nethernet.go (Config.Listeners) e nao pelo Dragonfly: aquele caminho
-	// cria o webrtc.SettingEngine internamente e nao permite entregar a lista de
-	// interfaces do Android ao Pion, que no aparelho falha com
-	// "netlinkrib: permission denied" ao criar o agente ICE.
+	// O NetherNet e montado em server/nethernet.go (Config.Listeners) e nao pelo
+	// Dragonfly: aquele caminho cria o webrtc.SettingEngine internamente e nao
+	// permite entregar a lista de interfaces do Android ao Pion, que no aparelho
+	// falha com "netlinkrib: permission denied" ao criar o agente ICE.
 	uc.Network.Transport = []string{"raknet"}
 	uc.Server.Name = opts.Name
 	uc.Server.AuthEnabled = opts.Auth
@@ -192,7 +261,13 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 
 	conf, err := uc.Config(log)
 	if err != nil {
-		return fmt.Errorf("não foi possível abrir o mundo (arquivo incompatível ou corrompido): %w", err)
+		var we *worldError
+		if errors.As(err, &we) {
+			return err
+		}
+		return worldErr(worldCodeIncompatible,
+			"não foi possível abrir o mundo: %v. Se ele foi importado agora, exporte de novo pelo Minecraft "+
+				"(Exportar mundo) e importe o .mcworld outra vez", err)
 	}
 	conf.AuthDisabled = !opts.Auth
 	if opts.Auth {
@@ -228,10 +303,11 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 			return fmt.Errorf("faixa de portas do NetherNet invalida: %w", perr)
 		}
 	}
-	conf.Listeners = []func(server.Config) (server.Listener, error){
-		func(c server.Config) (server.Listener, error) {
+	conf.Listeners = nil
+	if opts.RakNet {
+		conf.Listeners = append(conf.Listeners, func(c server.Config) (server.Listener, error) {
 			return startRakNet(c, address, log)
-		},
+		})
 	}
 	if opts.NetherNet {
 		conf.Listeners = append(conf.Listeners, func(c server.Config) (server.Listener, error) {
@@ -277,13 +353,14 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	}
 
 	rt := &runtime{
-		opts:   opts,
-		srv:    srv,
-		reg:    newRegistry(),
-		bans:   bans,
-		stop:   stop,
-		log:    log,
-		loaded: imported,
+		opts:      opts,
+		srv:       srv,
+		reg:       newRegistry(),
+		bans:      bans,
+		stop:      stop,
+		log:       log,
+		loaded:    imported,
+		startedAt: time.Now().Unix(),
 	}
 
 	// Make sure the UDP port really answers before telling the app that the
@@ -293,30 +370,37 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	// Cada transporte e verificado separadamente: abrir a porta, receber
 	// sinalizacao, estabelecer conexao e concluir o login sao etapas distintas e
 	// o console mostra qual delas falhou.
-	raknetErr := waitForListener(opts.Port, 12*time.Second)
-	if raknetErr == nil {
-		emitLog("info", fmt.Sprintf("Listener RakNet ativo: UDP :%d (descoberta e jogo)", opts.Port))
-	} else {
-		emitLog("error", "Listener RakNet falhou: "+raknetErr.Error())
-	}
 	var (
+		raknetErr  error
 		signalling signallingInfo
 		signErr    error
 		iceRep     iceReport
 	)
+	if !opts.NetherNet && !opts.RakNet {
+		_ = srv.Close()
+		return fmt.Errorf("nenhum transporte habilitado: ligue NetherNet (padrão) ou " +
+			"\"Compatibilidade RakNet\" em Ajustes avançados")
+	}
+	if opts.RakNet {
+		raknetErr = waitForListener(opts.Port, 12*time.Second)
+		if raknetErr == nil {
+			emitLog("info", fmt.Sprintf("Listener RakNet ativo: UDP :%d (compatibilidade e descoberta na rede local)", opts.Port))
+		} else {
+			emitLog("error", "Listener RakNet falhou: "+raknetErr.Error())
+		}
+	}
 	if opts.NetherNet {
 		signalling, signErr = waitForSignaling(opts.Port, 12*time.Second)
 		if signErr == nil {
-			emitLog("info", fmt.Sprintf("Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em TCP :%d "+
-				"(nome %q, protocolo %d, versao %s)", opts.Port, signalling.Name, signalling.Protocol, signalling.Version))
+			emitLog("info", fmt.Sprintf("Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em %d ms "+
+				"(nome %q, protocolo %d)", signalling.LatencyMS, signalling.Name, signalling.Protocol))
 			emitLog("info", fmt.Sprintf("Nome que o cliente recebe ao digitar o endereco: %q", signalling.Name))
 		} else {
 			emitLog("error", "Sinalizacao NetherNet falhou: "+signErr.Error())
 		}
 
 		// Responder HTTP nao e negociar: aqui o agente ICE e criado e os
-		// candidatos sao coletados de verdade, que era o passo que falhava no
-		// Android por causa do netlink bloqueado.
+		// candidatos sao coletados de verdade.
 		iceRep = checkICEGathering(ctx, iceNet, udpMin, udpMax, 12*time.Second)
 		if iceRep.OK {
 			emitLog("info", fmt.Sprintf("ICE ok: %d candidato(s) UDP, host em %s (interfaces: %s)",
@@ -325,8 +409,28 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 			emitLog("error", "ICE falhou, a negociacao NetherNet nao vai completar: "+iceRep.Error)
 		}
 	}
-	if raknetErr != nil && (signErr != nil || !opts.NetherNet) {
+
+	transports := make([]string, 0, 2)
+	failures := 0
+	if opts.NetherNet {
+		if signErr == nil {
+			transports = append(transports, "nethernet")
+		} else {
+			failures++
+		}
+	}
+	if opts.RakNet {
+		if raknetErr == nil {
+			transports = append(transports, "raknet")
+		} else {
+			failures++
+		}
+	}
+	if len(transports) == 0 {
 		_ = srv.Close()
+		if signErr != nil {
+			return fmt.Errorf("nenhum transporte abriu a porta: %v", signErr)
+		}
 		return fmt.Errorf("nenhum transporte abriu a porta: %v", raknetErr)
 	}
 
@@ -341,7 +445,8 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 		"imported": imported,
 		"auth":      !conf.AuthDisabled,
 		"nethernet": opts.NetherNet && signErr == nil,
-		"raknet":    raknetErr == nil,
+		"raknet":    opts.RakNet && raknetErr == nil,
+		"transports": transports,
 		"signaling": signalling,
 		"ice":       iceRep,
 	})
@@ -355,17 +460,27 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 		startTunnel(ctx, opts)
 	}
 
-	// A descoberta na rede local nao precisa de nenhum anuncio extra: o proprio
-	// listener RakNet responde aos "Unconnected Ping" que os clientes Bedrock
-	// enviam em broadcast para a porta do jogo (ver server/lan.go).
-	emitLog("info", fmt.Sprintf("Descoberta na rede local: o servidor responde aos pings de busca do Minecraft "+
-		"na porta UDP %d (aba Servidores / LAN do jogo).", opts.Port))
+	// Descoberta na rede local: quem responde aos "Unconnected Ping" que o
+	// cliente envia em broadcast e o listener RakNet (ver server/lan.go). Com o
+	// RakNet desligado (padrao), a entrada e por endereco (NetherNet).
+	if opts.RakNet && raknetErr == nil {
+		emitLog("info", fmt.Sprintf("Descoberta na rede local: o servidor responde aos pings de busca do Minecraft "+
+			"na porta UDP %d (aba Servidores / LAN do jogo).", opts.Port))
+	} else {
+		emitLog("info", "Descoberta automática na aba LAN desligada (NetherNet não responde ao ping do RakNet). "+
+			"Entre pelo endereço; para ver o servidor na aba LAN, ligue \"Compatibilidade RakNet\" em Ajustes avançados.")
+	}
 
 	// Auto teste: o servidor pinga a si mesmo em cada IPv4 do aparelho. Isso
 	// separa "o servidor nao esta escutando" de "a rede nao entrega o pacote",
 	// que e a duvida numero 1 de quem nao consegue conectar.
 	go func() {
-		targets := probeInterfaces(opts.Port, localIPv4s(iceNet))
+		var targets []lanTarget
+		if opts.RakNet {
+			targets = probeInterfaces(opts.Port, localIPv4s(iceNet))
+		} else {
+			targets = probeSignaling(opts.Port, localIPv4s(iceNet))
+		}
 		for _, target := range targets {
 			if target.OK {
 				emitLog("info", fmt.Sprintf("Servidor responde em %s:%d (%s)", target.IP, opts.Port, target.Iface))
@@ -394,13 +509,14 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 
 // runtime bundles everything the control loops need.
 type runtime struct {
-	opts   options
-	srv    *server.Server
-	reg    *registry
-	bans   *banList
-	stop   context.CancelFunc
-	log    *slog.Logger
-	loaded bool
+	opts      options
+	srv       *server.Server
+	reg       *registry
+	bans      *banList
+	stop      context.CancelFunc
+	log       *slog.Logger
+	loaded    bool
+	startedAt int64 // unix seconds; identifies this session toward the app
 }
 
 // acceptLoop registers every player that joins and removes it again when it
@@ -415,9 +531,12 @@ func (rt *runtime) acceptLoop() {
 			Addr:   addrString(p.Addr()),
 			Since:  time.Now().Unix(),
 		})
-		p.Handle(&joinHandler{reg: rt.reg})
+		p.Handle(&joinHandler{rt: rt})
 		emitLog("info", fmt.Sprintf("%s entrou no servidor (%d/%d)", name, rt.srv.PlayerCount(), rt.opts.MaxPlayers))
 		emit(map[string]any{"t": "join", "name": entry.Name, "xuid": entry.XUID, "device": entry.Device})
+		// A miniatura vai em um evento separado: o evento periódico de ping não
+		// precisa carregar a imagem de novo a cada atualização.
+		rt.emitAvatar(p.UUID(), entry.Name, entry.XUID, p.Skin())
 		rt.emitPlayers()
 	}
 }
@@ -425,16 +544,68 @@ func (rt *runtime) acceptLoop() {
 // ticker emits a periodic snapshot so the app's player list stays accurate even
 // if an event is missed.
 func (rt *runtime) ticker(ctx context.Context) {
-	t := time.NewTicker(20 * time.Second)
+	t := time.NewTicker(3 * time.Second)
 	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			rt.refreshLatency(ctx)
 			rt.emitPlayers()
 		}
 	}
+}
+
+// refreshLatency samples Player.Latency() for everyone online. The call runs on
+// the world goroutine through player.Call, which is the only safe way to touch
+// a Player, and it is bounded so one stuck session cannot block the rest.
+func (rt *runtime) refreshLatency(ctx context.Context) {
+	for id, handle := range rt.reg.handles() {
+		callCtx, cancel := context.WithTimeout(ctx, 1200*time.Millisecond)
+		ms, err := player.Call(callCtx, handle, func(tx *world.Tx, p *player.Player) (int64, error) {
+			return int64(p.Latency() / time.Millisecond), nil
+		})
+		cancel()
+		if err != nil || ms <= 0 {
+			// -1 means "no measurement": the UI shows "Sem medição" instead of
+			// a fake 0 ms. NetherNet sessions currently report no RTT.
+			rt.reg.setPing(id, -1)
+			continue
+		}
+		rt.reg.setPing(id, ms)
+	}
+}
+
+// emitAvatar renders the player's head from the skin of this session and sends
+// it to the app as a small PNG. The event is only emitted when the player joins
+// or changes skin.
+func (rt *runtime) emitAvatar(id uuid.UUID, name, xuid string, s skin.Skin) {
+	res := renderAvatar(s)
+	base := map[string]any{
+		"t":       "player_avatar",
+		"name":    name,
+		"xuid":    xuid,
+		"session": rt.startedAt,
+	}
+	if !res.Available {
+		rt.reg.setAvatar(id, "")
+		base["available"] = false
+		base["reason"] = res.Reason
+		emit(base)
+		emitLog("debug", fmt.Sprintf("Prévia do avatar indisponível para %s: %s", name, res.Reason))
+		return
+	}
+	if cached := rt.reg.avatarHash(id); cached == res.Hash {
+		return
+	}
+	rt.reg.setAvatar(id, res.Hash)
+	base["available"] = true
+	base["hash"] = res.Hash
+	base["layout"] = res.Layout
+	base["png"] = base64.StdEncoding.EncodeToString(res.PNG)
+	emit(base)
+	emitLog("debug", fmt.Sprintf("Avatar de %s gerado (%s, %d byte(s) de PNG)", name, res.Layout, len(res.PNG)))
 }
 
 func (rt *runtime) emitPlayers() {

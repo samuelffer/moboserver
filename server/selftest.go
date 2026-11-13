@@ -93,42 +93,47 @@ func runSelftest(opts options, log *slog.Logger) int {
 	}
 	fmt.Fprintf(os.Stderr, "selftest: surface block at spawn: %T\n", block)
 
-	motd, err := pingServer(fmt.Sprintf("127.0.0.1:%d", opts.Port), 15*time.Second)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "selftest: raknet ping failed:", err)
-		cancel()
-		<-done
-		return 1
-	}
-	fmt.Fprintf(os.Stderr, "selftest: pong: %s\n", motd)
-	if err := validatePong(motd, opts.Port, opts.Name); err != nil {
-		fmt.Fprintln(os.Stderr, "selftest: pong invalido:", err)
-		cancel()
-		<-done
-		return 1
-	}
-
-	// The loopback ping above only proves the socket exists. This one proves the
-	// server answers on a real interface address, which is exactly what breaks
-	// when the listen address or the socket binding is wrong.
+	// O ping de descoberta do Bedrock (Unconnected Ping 0x01) só existe no
+	// RakNet. Com o transporte legado desligado a verificação de rede é feita
+	// pela sinalização NetherNet, logo abaixo.
 	iceNet := newICENetwork(opts.IfaceFile)
-	if targets := localIPv4s(iceNet); len(targets) > 0 {
-		target := targets[0]
-		address := fmt.Sprintf("%s:%d", target.IP, opts.Port)
-		lanMotd, err := pingServer(address, 8*time.Second)
+	if opts.RakNet {
+		motd, err := pingServer(fmt.Sprintf("127.0.0.1:%d", opts.Port), 15*time.Second)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "selftest: ping via %s (%s) failed: %v\n", address, target.Iface, err)
+			fmt.Fprintln(os.Stderr, "selftest: raknet ping failed:", err)
 			cancel()
 			<-done
 			return 1
 		}
-		if err := validatePong(lanMotd, opts.Port, opts.Name); err != nil {
-			fmt.Fprintf(os.Stderr, "selftest: pong invalido via %s: %v\n", address, err)
+		fmt.Fprintf(os.Stderr, "selftest: pong: %s\n", motd)
+		if err := validatePong(motd, opts.Port, opts.Name); err != nil {
+			fmt.Fprintln(os.Stderr, "selftest: pong invalido:", err)
 			cancel()
 			<-done
 			return 1
 		}
-		fmt.Fprintf(os.Stderr, "selftest: interface %s (%s) respondeu no ping\n", target.Iface, target.IP)
+	
+		// The loopback ping above only proves the socket exists. This one proves the
+		// server answers on a real interface address, which is exactly what breaks
+		// when the listen address or the socket binding is wrong.
+		if targets := localIPv4s(iceNet); len(targets) > 0 {
+			target := targets[0]
+			address := fmt.Sprintf("%s:%d", target.IP, opts.Port)
+			lanMotd, err := pingServer(address, 8*time.Second)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "selftest: ping via %s (%s) failed: %v\n", address, target.Iface, err)
+				cancel()
+				<-done
+				return 1
+			}
+			if err := validatePong(lanMotd, opts.Port, opts.Name); err != nil {
+				fmt.Fprintf(os.Stderr, "selftest: pong invalido via %s: %v\n", address, err)
+				cancel()
+				<-done
+				return 1
+			}
+			fmt.Fprintf(os.Stderr, "selftest: interface %s (%s) respondeu no ping\n", target.Iface, target.IP)
+		}
 	}
 
 	// Transporte por endereco: o cliente Bedrock sonda /v1/join antes de cair no
@@ -166,6 +171,12 @@ func runSelftest(opts options, log *slog.Logger) int {
 	}
 
 	if opts.SelftestTunnel {
+		if !opts.RakNet {
+			fmt.Fprintln(os.Stderr, "selftest: -selftest-tunnel exige -raknet (o tunel so encaminha UDP/RakNet)")
+			cancel()
+			<-done
+			return 1
+		}
 		if err := checkTunnelDiscovery(ctx, opts.Port, opts.Name); err != nil {
 			fmt.Fprintln(os.Stderr, "selftest: tunel:", err)
 			cancel()
