@@ -93,7 +93,8 @@ class WorldSelectionTest {
     fun `iniciar durante a importacao tem mensagem propria`() {
         val failure = WorldDiagnosis.importRunning()
         assertEquals(StartProblem.BUSY, failure.problem)
-        assertTrue(failure.message.contains("Importação em andamento"))
+        assertEquals("Importação em andamento", failure.title)
+        assertTrue(failure.message.contains("Aguarde"))
         assertTrue(failure.openWorlds)
     }
 
