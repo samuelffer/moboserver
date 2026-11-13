@@ -61,8 +61,24 @@ qualquer rede - inclusive quando o celular esta atras de CGNAT, porque quem
 inicia a conexao e o celular. Sem relay, LAN e redirecionamento de porta
 continuam funcionando normalmente.
 
+Versao do Minecraft e NetherNet
+-------------------------------
+O servidor fala Bedrock 1.26.60 (protocolo 2225). O cliente precisa ser
+compativel; a tela inicial do app mostra a versao e o protocolo em uso. Um
+cliente Java Edition nunca conecta (protocolo diferente).
+
+Alem do RakNet (UDP 19132), o servidor abre o transporte NetherNet na mesma
+porta: sinalizacao HTTP em http://IP:19132/v1/join e midia em UDP
+19133-19140. Clientes atuais sondam esse endereco antes de cair no RakNet; sem
+ele, a tela fica em "localizando servidor". Se o app perguntar ou o sistema
+avisar que a conexao nao e segura, aceite: ali nao ha certificado de dominio
+publico.
+
 Se ninguem conseguir entrar
 ----------------------------
+0. Confira a versao do Minecraft do outro aparelho e, no PC, rode o teste de UDP
+   descrito em docs/diagnostico-pc.md. Ele separa "o servidor nao responde" de
+   "a rede nao entrega o pacote".
 1. Ligue o servidor e olhe o cartao "Acesso pela internet".
 2. "Auto-teste" mostra os enderecos em que o servidor respondeu vistos de
    dentro do celular. Se aparecer "o celular nao respondeu", desligue VPN e
@@ -75,6 +91,13 @@ Se ninguem conseguir entrar
      rede Wi-Fi ou desative o isolamento no painel do roteador.
 4. Console > Diagnostico gera um relatorio completo (aparelho, interfaces,
    IPs, gateway, log) e abre o compartilhamento do Android.
+
+Se o login da Microsoft falhar
+-------------------------------
+O servidor verifica o login do Xbox ao ligar. Se essa verificacao falhar, ele
+NAO sobe e mostra o erro exato (DNS, TLS, HTTP). Isso e proposital: entrar sem
+verificar a conta so acontece se voce ligar "Modo aberto se o login falhar" em
+Ajustes, e o console avisa em amarelo quando esse modo esta ativo.
 
 Se o app fechar sozinho
 ------------------------
