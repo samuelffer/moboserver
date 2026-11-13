@@ -123,6 +123,8 @@ data class RuntimeState(
     val exposure: Exposure = Exposure(),
     /** Name of the world the current/last session was started with. */
     val worldName: String? = null,
+    /** true enquanto a aba Mundos importa/valida um .mcworld. */
+    val importing: Boolean = false,
     /** Miniaturas por jogador (chave = [PlayerInfo.key]). */
     val avatars: Map<String, PlayerAvatar> = emptyMap(),
     /** Latência agregada dos últimos 60 s, uma amostra a cada atualização. */

@@ -86,15 +86,21 @@ fun WorldsScreen() {
         if (uri == null) return@rememberLauncherForActivityResult
         importing = true
         message = null
+        ServerController.beginImport()
         scope.launch {
-            val outcome = withContext(Dispatchers.IO) {
-                try {
-                    repository.importWorld(uri, "Mundo importado") as Any
-                } catch (e: Exception) {
-                    e
+            val outcome = try {
+                withContext(Dispatchers.IO) {
+                    try {
+                        repository.importWorld(uri, "Mundo importado") as Any
+                    } catch (e: Exception) {
+                        e
+                    }
                 }
+            } finally {
+                // Sempre libera o início, inclusive se a corrotina for cancelada.
+                importing = false
+                ServerController.endImport()
             }
-            importing = false
             if (outcome is WorldInfo) {
                 val selection = ServerController.selectWorld(outcome.id)
                 reload()
@@ -206,7 +212,7 @@ fun WorldsScreen() {
                     world = world,
                     active = world.id == config.activeWorldId,
                     running = world.id == ServerController.runningWorldId,
-                    enabled = !busy,
+                    enabled = !busy && !importing,
                     onSelect = {
                         val outcome = ServerController.selectWorld(world.id)
                         if (outcome.ok) {

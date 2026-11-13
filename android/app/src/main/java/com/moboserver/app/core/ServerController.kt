@@ -74,6 +74,16 @@ object ServerController {
     val isBusy: Boolean
         get() = session?.let { !it.finished } == true
 
+    /** Marca o começo de uma importação; iniciar o servidor fica bloqueado. */
+    fun beginImport() {
+        _state.update { it.copy(importing = true) }
+    }
+
+    /** Fim da importação (sucesso ou erro): libera o início. */
+    fun endImport() {
+        _state.update { it.copy(importing = false) }
+    }
+
     /** ID do mundo carregado pela sessão atual (null quando nada está rodando). */
     val runningWorldId: String?
         get() {
@@ -167,6 +177,13 @@ object ServerController {
     private fun isCurrent(s: Session): Boolean = session === s && !s.finished && !s.stopRequested
 
     private fun startInternal(context: Context, s: Session) {
+        // Importação em andamento: a seleção ainda não foi gravada, então o
+        // início recusa com o motivo certo em vez de dizer "nenhum mundo".
+        if (_state.value.importing) {
+            if (isCurrent(s)) fail(s, WorldDiagnosis.importRunning())
+            return
+        }
+
         // Snapshot da sessão: o que chega ao processo é exatamente o que estava
         // selecionado aqui, mesmo que a UI mude de ideia no meio do caminho.
         val config = Store.snapshot()

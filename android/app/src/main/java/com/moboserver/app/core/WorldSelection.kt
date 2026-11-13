@@ -161,6 +161,21 @@ object WorldDiagnosis {
         technical = "seleção bloqueada durante STARTING/RUNNING/STOPPING",
     )
 
+    /**
+     * O usuário tentou iniciar enquanto uma importação ainda não terminou. Foi
+     * por aqui que "Nenhum mundo selecionado" aparecia com um mundo já
+     * escolhido: a seleção só é gravada quando a importação (e a validação)
+     * termina, e o botão "Ligar" não olhava para isso.
+     */
+    fun importRunning(): StartFailure = StartFailure(
+        problem = StartProblem.BUSY,
+        title = "Importação em andamento",
+        message = "O mundo ainda está sendo importado e validado. Aguarde a mensagem de confirmação " +
+            "na aba Mundos antes de iniciar o servidor.",
+        technical = "start durante import",
+        openWorlds = true,
+    )
+
     fun noRepository(): StartFailure = StartFailure(
         problem = StartProblem.OTHER,
         title = "Não foi possível abrir a pasta de mundos",
