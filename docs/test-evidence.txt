@@ -1,27 +1,27 @@
 MoboServer - evidencias automatizadas do ultimo build verde
-Commit: 51697f69a3015fe1c19e86f2ebd7c1977ec7b426
-Data: 2026-11-13T20:55:43Z
+Commit: 3c756ccc4dc198ca792f58475c392ef091c29dbf
+Data: 2026-11-13T21:00:29Z
 
-ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.235s
+ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.237s
 {"lvl":"info","msg":"Listener RakNet ativo: UDP :19132 (descoberta e jogo)","t":"log"}
 {"lvl":"info","msg":"Listener NetherNet ativo: sinalizacao HTTP em TCP :19132, midia UDP 19133-19140","t":"log"}
 selftest: surface block at spawn: block.Grass
-selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;5999658822912323851;;Survival;1;19132;19132;0;0;
-selftest: interface eth0 (10.1.1.37) respondeu no ping
+selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;8628004124057275762;;Survival;1;19132;19132;0;0;
+selftest: interface eth0 (10.1.0.29) respondeu no ping
 selftest: sinalizacao NetherNet ok em TCP 19132 (/v1/join)
 SELFTEST OK
 {"lvl":"info","msg":"Listener RakNet ativo: UDP :19555 (descoberta e jogo)","t":"log"}
 {"lvl":"info","msg":"Listener NetherNet ativo: sinalizacao HTTP em TCP :19555, midia UDP 19133-19140","t":"log"}
 selftest: surface block at spawn: block.Grass
-selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;4871766413939244775;;Survival;1;19555;19555;0;0;
-selftest: interface eth0 (10.1.1.37) respondeu no ping
+selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;1119358219606195637;;Survival;1;19555;19555;0;0;
+selftest: interface eth0 (10.1.0.29) respondeu no ping
 selftest: sinalizacao NetherNet ok em TCP 19555 (/v1/join)
 SELFTEST OK
 {"lvl":"info","msg":"Listener RakNet ativo: UDP :19132 (descoberta e jogo)","t":"log"}
 {"lvl":"info","msg":"Listener NetherNet ativo: sinalizacao HTTP em TCP :19132, midia UDP 19133-19140","t":"log"}
 selftest: surface block at spawn: block.Grass
-selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;4222517065650441126;;Survival;1;19132;19132;0;0;
-selftest: interface eth0 (10.1.1.37) respondeu no ping
+selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;2406045041831625812;;Survival;1;19132;19132;0;0;
+selftest: interface eth0 (10.1.0.29) respondeu no ping
 selftest: sinalizacao NetherNet ok em TCP 19132 (/v1/join)
-selftest: tunel ok, porta publica 56549 respondeu ao ping RakNet
+selftest: tunel ok, porta publica 57798 respondeu ao ping RakNet
 SELFTEST OK
