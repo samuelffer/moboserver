@@ -72,7 +72,8 @@ Limitacoes conhecidas
 - O UPnP depende do roteador; se ele nao suportar, a porta deve ser liberada
   manualmente.
 - O servidor precisa de internet ativa: a verificacao de login do Xbox Live
-  acontece no inicio.
+  acontece no inicio. Se o servico da Microsoft estiver inacessivel na sua rede,
+  o servidor sobe em "modo aberto" (sem exigir conta Xbox) e avisa na tela.
 
 Licenca e creditos
 ------------------

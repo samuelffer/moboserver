@@ -33,7 +33,7 @@ processo nativo do próprio app:
 * **Segundo plano**: serviço em primeiro plano + wake lock + Wi-Fi lock, com notificação
   permanente mostrando jogadores e porta.
 
-## Recursos da versão 1.0.4
+## Recursos da versão 1.0.5
 
 | Recurso | Detalhe |
 | --- | --- |
@@ -58,9 +58,9 @@ processo nativo do próprio app:
 
 | Arquivo | Tamanho | SHA-256 |
 | --- | --- | --- |
-| [`releases_apk/MoboServer-v1.0.4-android-arm64.zip`](releases_apk/MoboServer-v1.0.4-android-arm64.zip) | 18,5 MB | `1ffac7f378563dde6fd5afa17229b95823c2f37b03ab4e7e6821f9d7cfab4cfe` |
+| [`releases_apk/MoboServer-v1.0.5-android-arm64.zip`](releases_apk/MoboServer-v1.0.5-android-arm64.zip) | 18,5 MB | `e01b86376b5131569f3cc46fdf207001816e7960b262fed2d8415eaf9b44f7f3` |
 
-O ZIP contém `MoboServer-v1.0.4.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
+O ZIP contém `MoboServer-v1.0.5.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
 (`apksigner verify` roda no CI) e as próximas versões instalam por cima desta.
 
 ## Instalação
@@ -69,7 +69,7 @@ Copie o APK do ZIP para o celular e abra o arquivo — o Android vai pedir permi
 instalar apps de fontes desconhecidas. Para conferir o download, compare o SHA-256 acima:
 
 ```bash
-sha256sum MoboServer-v1.0.4-android-arm64.zip
+sha256sum MoboServer-v1.0.5-android-arm64.zip
 ```
 
 ## Quem consegue entrar
@@ -174,6 +174,17 @@ validação final é a primeira execução no seu celular. Se algo falhar, o con
 a mensagem de erro do servidor.
 
 ## Changelog
+
+### 1.0.5
+
+* **DNS**: o Android não tem `/etc/resolv.conf` — o resolvedor puro do Go caía em `[::1]:53` e
+  nenhum nome resolvia, o que derrubava o login do Xbox Live e, junto, a abertura do listener
+  (`dial tcp: lookup client.discovery.minecraft-services.net ... connection refused`). O app
+  agora lê os servidores DNS da rede (`LinkProperties`) e os repassa ao processo com `-dns`.
+* **Modo aberto**: se o serviço de login da Microsoft continuar inacessível (rede bloqueada,
+  DNS do provedor, proxy), o servidor sobe **sem verificação de conta** em vez de não subir, com
+  aviso na tela inicial e no console.
+* Mensagem de timeout de inicialização mais clara (aponta o Console).
 
 ### 1.0.4
 
