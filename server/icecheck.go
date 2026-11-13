@@ -48,6 +48,13 @@ func checkICEGathering(ctx context.Context, network transport.Net, minPort, maxP
 	} else {
 		rep.Interfaces = summary
 	}
+	// Report where the interface list came from: "android" means the injected
+	// list was really used instead of netlink.
+	if provider, ok := network.(interface{ Source() (string, int) }); ok {
+		if source, _ := provider.Source(); source != "" {
+			rep.Source = source
+		}
+	}
 
 	var settingEngine webrtc.SettingEngine
 	settingEngine.SetNet(network)
