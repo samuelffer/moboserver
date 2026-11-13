@@ -19,7 +19,6 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/df-mc/dragonfly/server/world/biome"
 	"github.com/df-mc/dragonfly/server/world/generator"
-	"github.com/sandertv/gophertunnel/minecraft"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
@@ -231,7 +230,7 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	}
 	conf.Listeners = []func(server.Config) (server.Listener, error){
 		func(c server.Config) (server.Listener, error) {
-			return server.ListenNetwork(c, minecraft.RakNet{}, address)
+			return startRakNet(c, address, log)
 		},
 	}
 	if opts.NetherNet {

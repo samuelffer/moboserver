@@ -108,9 +108,9 @@ func startNetherNet(conf server.Config, opts netherNetOptions) (server.Listener,
 		return nil, fmt.Errorf("listen NetherNet HTTP: %w", err)
 	}
 
-	// server.ListenNetwork wraps gophertunnel's listener into a Dragonfly
-	// Listener, exactly like dragonfly's own NetherNetConfig.Listener does.
-	inner, err := server.ListenNetwork(conf, minecraft.NetherNet{
+	// gophertunnel cria o listener a partir do minecraft.NetherNet, exatamente
+	// como o NetherNetConfig.Listener do Dragonfly faria.
+	inner, err := gopherListenConfig(conf, opts.Log).ListenNetwork(minecraft.NetherNet{
 		Signaling:    handler,
 		ListenConfig: listenConfig,
 		Log:          log,
@@ -137,28 +137,21 @@ func startNetherNet(conf server.Config, opts netherNetOptions) (server.Listener,
 	}()
 
 	log.Info("NetherNet listener running.", "addr", tcp.Addr())
-	return &netherNetListener{Listener: inner, httpServer: httpServer, mux: mux}, nil
-}
-
-// netherNetListener closes the signaling HTTP server (and the optional UDP mux)
-// together with the game listener.
-type netherNetListener struct {
-	server.Listener
-	httpServer *http.Server
-	mux        ice.UDPMux
-}
-
-func (l *netherNetListener) Close() error {
-	err := l.Listener.Close()
-	if l.httpServer != nil {
-		if e := l.httpServer.Close(); e != nil && !errors.Is(e, http.ErrServerClosed) && err == nil {
-			err = e
-		}
-	}
-	if l.mux != nil {
-		_ = l.mux.Close()
-	}
-	return err
+	return moboListener{
+		Listener: inner,
+		closeExtra: func() error {
+			var firstErr error
+			if err := httpServer.Close(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				firstErr = err
+			}
+			if mux != nil {
+				if err := mux.Close(); err != nil && firstErr == nil {
+					firstErr = err
+				}
+			}
+			return firstErr
+		},
+	}, nil
 }
 
 // loadOrCreateNetherNetKey reads the P-384 identity key, generating and saving a
