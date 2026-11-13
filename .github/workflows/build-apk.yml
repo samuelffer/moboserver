@@ -57,6 +57,8 @@ jobs:
           # padrao quanto em uma porta personalizada.
           /tmp/mobosrv -selftest -port 19132
           /tmp/mobosrv -selftest -port 19555
+          # Tunel: relay local + cliente + ping RakNet pela porta publica.
+          /tmp/mobosrv -selftest -port 19132 -selftest-tunnel
           } 2>&1 | tee /tmp/go-check.log
 
       - name: "Servidor: compilar para Android arm64"

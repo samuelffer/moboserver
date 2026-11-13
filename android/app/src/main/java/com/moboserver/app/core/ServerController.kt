@@ -497,6 +497,8 @@ object ServerController {
 
             is ServerEvent.Players -> _state.update { it.copy(players = event.players) }
 
+            is ServerEvent.Stopped -> Unit
+
             is ServerEvent.Fatal -> fail(event.message)
 
             is ServerEvent.Exited -> {
