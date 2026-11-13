@@ -246,15 +246,15 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 		opts.readyHook(srv)
 	}
 
-	// A descoberta na rede local nao precisa de nenhum anuncio extra: o proprio
-	// listener RakNet responde aos "Unconnected Ping" que os clientes Bedrock
-	// enviam em broadcast para a porta do jogo (ver server/lan.go).
 	if opts.Tunnel != "" {
 		startTunnel(ctx, opts)
 	}
 
+	// A descoberta na rede local nao precisa de nenhum anuncio extra: o proprio
+	// listener RakNet responde aos "Unconnected Ping" que os clientes Bedrock
+	// enviam em broadcast para a porta do jogo (ver server/lan.go).
 	emitLog("info", fmt.Sprintf("Descoberta na rede local: o servidor responde aos pings de busca do Minecraft "+
-		"na porta UDP %d (aba "Servidores" / LAN do jogo).", opts.Port))
+		"na porta UDP %d (aba Servidores / LAN do jogo).", opts.Port))
 
 	// Auto teste: o servidor pinga a si mesmo em cada IPv4 do aparelho. Isso
 	// separa "o servidor nao esta escutando" de "a rede nao entrega o pacote",
