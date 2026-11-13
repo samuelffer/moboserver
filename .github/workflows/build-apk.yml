@@ -73,9 +73,10 @@ jobs:
             git -C .. push || true
             exit 1
           fi
-          # PIE linux aponta para o loader do glibc, que nao existe no Android:
-          # troca por /system/bin/linker64 (ver scripts/patch-interp.py).
-          python3 ../scripts/patch-interp.py "$OUT/libmobosrv.so"
+          # PIE linux aponta para o loader do glibc (inexistente no Android) e
+          # tem TLS com alinhamento 8 (Bionic exige 64). Ver
+          # scripts/patch-android-elf.py.
+          python3 ../scripts/patch-android-elf.py "$OUT/libmobosrv.so"
           ls -lh "$OUT/libmobosrv.so"
           file "$OUT/libmobosrv.so"
 
@@ -116,10 +117,19 @@ jobs:
               sys.exit("ELF nao e um PIE aarch64")
           if interp != "/system/bin/linker64":
               sys.exit(f"interpretador errado: {interp!r} (esperado /system/bin/linker64)")
+          tls_align = None
+          for i in range(e_phnum):
+              off = e_phoff + i * e_phentsize
+              p_type, = struct.unpack_from("<I", data, off)
+              if p_type == 7:
+                  tls_align, = struct.unpack_from("<Q", data, off + 48)
           if needed:
               sys.exit("binario com dependencias dinamicas: nao roda em Android sem essas libs")
+          if tls_align is not None and tls_align < 64:
+              sys.exit(f"PT_TLS com alinhamento {tls_align}: Bionic exige >= 64")
+          print("ELF ok: PIE aarch64, /system/bin/linker64, TLS", tls_align, "sem dependencias")
           PY
-          echo "ELF ok: PIE aarch64 com /system/bin/linker64 e sem dependencias"
+          echo "ELF ok"
 
       - name: Setup Java 17
         uses: actions/setup-java@v4

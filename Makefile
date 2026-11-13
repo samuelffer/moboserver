@@ -18,7 +18,7 @@ server-arm64:
 	mkdir -p $(JNI_DIR)
 	cd server && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -buildmode=pie \
 		-trimpath -ldflags="-s -w" -o ../$(JNI_DIR)/libmobosrv.so .
-	python3 scripts/patch-interp.py $(JNI_DIR)/libmobosrv.so
+	python3 scripts/patch-android-elf.py $(JNI_DIR)/libmobosrv.so
 
 ## Gera o APK release
 apk: server-arm64
