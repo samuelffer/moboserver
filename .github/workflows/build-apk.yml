@@ -39,7 +39,7 @@ jobs:
           cache: true
           cache-dependency-path: server/go.sum
 
-      - name: Servidor: dependencias, vet e self-test
+      - name: "Servidor: dependencias, vet e self-test"
         working-directory: server
         run: |
           set -euo pipefail
@@ -51,7 +51,7 @@ jobs:
           # ping RakNet e desliga. Falha o build se qualquer parte quebrar.
           /tmp/mobosrv -selftest
 
-      - name: Servidor: compilar para Android arm64
+      - name: "Servidor: compilar para Android arm64"
         working-directory: server
         run: |
           set -euo pipefail
