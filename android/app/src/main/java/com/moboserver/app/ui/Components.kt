@@ -1,8 +1,10 @@
 package com.moboserver.app.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -15,16 +17,23 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.moboserver.app.core.PlayerAvatar
+import com.moboserver.app.core.PlayerInfo
 
 /** Rounded dark card used across the app. */
 @Composable
@@ -139,9 +148,22 @@ fun FormRow(
     }
 }
 
+/**
+ * Cabeça do jogador. Usa a miniatura enviada pelo servidor a partir da skin da
+ * sessão; quando ela não existe (Persona, geometria personalizada, skin
+ * inconsistente) mostra o avatar padrão com a inicial do nome.
+ *
+ * [lan] desenha um selo discreto: o endereço do jogador está na mesma sub-rede
+ * do aparelho, o que na prática significa que ele entrou pela rede local.
+ */
 @Composable
-fun PlayerAvatar(name: String, size: Int = 38) {
-    val initial = name.trim().take(1).uppercase().ifBlank { "?" }
+fun PlayerAvatar(
+    name: String,
+    avatar: PlayerAvatar? = null,
+    size: Int = 38,
+    lan: Boolean = false,
+) {
+    val image = avatar?.image
     Box(
         modifier = Modifier
             .size(size.dp)
@@ -150,11 +172,141 @@ fun PlayerAvatar(name: String, size: Int = 38) {
             .border(1.dp, MoboColors.LimeDark, RoundedCornerShape(12.dp)),
         contentAlignment = Alignment.Center,
     ) {
+        if (image != null) {
+            Image(
+                bitmap = image,
+                contentDescription = "Skin de $name",
+                contentScale = ContentScale.Crop,
+                // Pixelado de propósito: a miniatura tem 64x64 e precisa manter
+                // as bordas nítidas em vez de virar um borrão.
+                filterQuality = FilterQuality.None,
+                modifier = Modifier
+                    .size(size.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+            )
+        } else {
+            Text(
+                text = name.trim().take(1).uppercase().ifBlank { "?" },
+                color = MoboColors.Lime,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+            )
+        }
+        if (lan) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(1.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(MoboColors.Background.copy(alpha = 0.85f))
+                    .padding(horizontal = 3.dp, vertical = 1.dp),
+            ) {
+                Text("LAN", color = MoboColors.TextSecondary, fontSize = 7.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+/** Nome do jogador na fonte pixelada, como no Minecraft. */
+@Composable
+fun PlayerName(name: String, fontSize: Int = 13) {
+    Text(
+        text = name,
+        color = MoboColors.TextPrimary,
+        fontSize = fontSize.sp,
+        fontFamily = MoboFonts.Pixel,
+        fontWeight = FontWeight.Normal,
+    )
+}
+
+/**
+ * Três barras com o ping em ms. Sem medição (ping <= 0) mostra um ícone neutro
+ * e o texto "Sem medição" em vez de sugerir uma latência boa ou ruim.
+ */
+@Composable
+fun PingBars(pingMs: Long, compact: Boolean = false) {
+    if (pingMs <= 0) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Filled.SignalCellularAlt,
+                contentDescription = null,
+                tint = MoboColors.TextSecondary.copy(alpha = 0.5f),
+                modifier = Modifier.size(if (compact) 12.dp else 14.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = if (compact) "—" else "Sem medição",
+                color = MoboColors.TextSecondary,
+                fontSize = if (compact) 10.sp else 11.sp,
+            )
+        }
+        return
+    }
+    val bars = when {
+        pingMs <= 80 -> 3
+        pingMs <= 160 -> 2
+        else -> 1
+    }
+    val color = when (bars) {
+        3 -> MoboColors.Lime
+        2 -> MoboColors.Warning
+        else -> MoboColors.Danger
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            for (index in 0 until 3) {
+                Box(
+                    modifier = Modifier
+                        .width(3.dp)
+                        .height((4 + index * 3).dp)
+                        .clip(RoundedCornerShape(1.dp))
+                        .background(if (index < bars) color else MoboColors.Outline),
+                )
+            }
+        }
+        Spacer(Modifier.width(5.dp))
         Text(
-            text = initial,
-            color = MoboColors.Lime,
-            fontWeight = FontWeight.Bold,
-            fontSize = 15.sp,
+            text = "$pingMs ms",
+            color = color,
+            fontSize = if (compact) 9.sp else 10.sp,
+            fontFamily = FontFamily.Monospace,
         )
+    }
+}
+
+/**
+ * Uma linha de jogador: cabeça à esquerda, nick no centro em fonte pixelada e
+ * ping à direita. [onManage] mantém expulsar/banir acessíveis na Início.
+ */
+@Composable
+fun PlayerRow(
+    player: PlayerInfo,
+    avatar: PlayerAvatar?,
+    lan: Boolean,
+    onClick: (() -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PlayerAvatar(name = player.name, avatar = avatar, lan = lan)
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            PlayerName(player.name)
+            if (player.device.isNotBlank()) {
+                Text(
+                    text = player.device,
+                    color = MoboColors.TextSecondary,
+                    fontSize = 11.sp,
+                )
+            }
+        }
+        PingBars(pingMs = player.pingMs)
     }
 }

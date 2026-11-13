@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -34,6 +35,7 @@ private val tabs = listOf(
     Tab("Início", Icons.Filled.Home),
     Tab("Mundos", Icons.Filled.Public),
     Tab("Console", Icons.Filled.List),
+    Tab("Conexão", Icons.Filled.SignalCellularAlt),
     Tab("Ajustes", Icons.Filled.Settings),
 )
 
@@ -84,6 +86,7 @@ fun AppRoot() {
                 )
                 1 -> WorldsScreen()
                 2 -> ConsoleScreen()
+                3 -> ConnectionScreen()
                 else -> SettingsScreen()
             }
         }

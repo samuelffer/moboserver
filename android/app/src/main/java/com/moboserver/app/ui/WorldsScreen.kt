@@ -69,7 +69,6 @@ fun WorldsScreen() {
     var worlds by remember { mutableStateOf<List<WorldInfo>>(emptyList()) }
     var importing by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
-    var showCreate by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<WorldInfo?>(null) }
 
     val busy = runtime.status == ServerStatus.STARTING || runtime.status == ServerStatus.RUNNING ||
@@ -99,7 +98,18 @@ fun WorldsScreen() {
             if (outcome is WorldInfo) {
                 Store.update { it.copy(activeWorldId = outcome.id) }
                 reload()
-                message = "Mundo \"${outcome.name}\" importado e selecionado."
+                message = buildString {
+                    append("Mundo \"${outcome.name}\" importado e selecionado.")
+                    if (outcome.originalBytes > 0) {
+                        append(" O .mcworld original ficou guardado no aparelho.")
+                    }
+                    if (outcome.fixedTags.isNotEmpty()) {
+                        append(
+                            " Metadados preservados: ${outcome.fixedTags.joinToString(", ")} " +
+                                "(voltam ao arquivo quando o mundo é salvo).",
+                        )
+                    }
+                }
             } else {
                 message = (outcome as? Exception)?.message ?: "Não foi possível importar o mundo."
             }
@@ -114,39 +124,35 @@ fun WorldsScreen() {
         Spacer(Modifier.height(12.dp))
         Text("Mundos", color = MoboColors.TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Text(
-            "Escolha o mundo que o servidor vai abrir. Você pode importar o seu mundo do Minecraft (.mcworld) ou gerar um novo.",
+            "O servidor abre um mundo exportado pelo Minecraft Bedrock. Importe o .mcworld do seu " +
+                "aparelho: o arquivo original é guardado aqui e o mundo só é liberado depois de validado.",
             color = MoboColors.TextSecondary,
             fontSize = 12.sp,
         )
         Spacer(Modifier.height(14.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = { showCreate = true },
-                enabled = !busy && !importing,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.weight(1f),
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Novo mundo", fontSize = 13.sp)
-            }
-            OutlinedButton(
-                onClick = { picker.launch(arrayOf("*/*")) },
-                enabled = !busy && !importing,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.weight(1f),
-            ) {
-                Icon(Icons.Filled.Upload, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Importar", fontSize = 13.sp)
-            }
+        Button(
+            onClick = { picker.launch(arrayOf("*/*")) },
+            enabled = !busy && !importing,
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Filled.Upload, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Importar mundo (.mcworld)", fontSize = 14.sp)
         }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "A criação de mundo acontece no Minecraft, onde o jogo gera o terreno e os animais. " +
+                "Aqui não existe gerador próprio.",
+            color = MoboColors.TextSecondary,
+            fontSize = 11.sp,
+        )
 
         if (busy) {
             Spacer(Modifier.height(10.dp))
             Text(
-                "Desligue o servidor para trocar, criar ou excluir mundos.",
+                "Desligue o servidor para trocar ou excluir mundos.",
                 color = MoboColors.Warning,
                 fontSize = 12.sp,
             )
@@ -180,7 +186,8 @@ fun WorldsScreen() {
         if (worlds.isEmpty()) {
             MoboCard {
                 Text(
-                    "Nenhum mundo ainda. Crie um mundo novo para testar ou importe o seu .mcworld.",
+                    "Nenhum mundo ainda. Exporte um mundo pelo Minecraft (\"Exportar mundo\" gera um " +
+                        ".mcworld) e toque em Importar mundo.",
                     color = MoboColors.TextSecondary,
                     fontSize = 13.sp,
                 )
@@ -200,36 +207,28 @@ fun WorldsScreen() {
                         Store.update { it.copy(activeWorldId = world.id) }
                         message = "O servidor vai abrir \"${world.name}\" no próximo início."
                     },
+                    onValidate = {
+                        scope.launch {
+                            val validation = withContext(Dispatchers.IO) { repository.validate(world.id) }
+                            message = if (validation.ok) {
+                                buildString {
+                                    append("Mundo \"${validation.levelName.ifBlank { world.name }}\" validado: ")
+                                    append("level.dat legível, ${validation.dbFiles} arquivo(s) em db/")
+                                    if (validation.fixedTags.isNotEmpty()) {
+                                        append(", metadados preservados (${validation.fixedTags.joinToString(", ")})")
+                                    }
+                                    append(".")
+                                }
+                            } else {
+                                validation.message(world.name)
+                            }
+                        }
+                    },
                     onDelete = { pendingDelete = world },
                 )
             }
             item { Spacer(Modifier.height(24.dp)) }
         }
-    }
-
-    if (showCreate) {
-        CreateWorldDialog(
-            onDismiss = { showCreate = false },
-            onCreate = { name, generator ->
-                showCreate = false
-                scope.launch {
-                    val outcome = withContext(Dispatchers.IO) {
-                        try {
-                            repository.create(name) as Any
-                        } catch (e: Exception) {
-                            e
-                        }
-                    }
-                    if (outcome is WorldInfo) {
-                        Store.update { it.copy(activeWorldId = outcome.id, generator = generator) }
-                        reload()
-                        message = "Mundo \"${outcome.name}\" criado."
-                    } else {
-                        message = (outcome as? Exception)?.message ?: "Não foi possível criar o mundo."
-                    }
-                }
-            },
-        )
     }
 
     pendingDelete?.let { world ->
@@ -270,6 +269,7 @@ private fun WorldCard(
     active: Boolean,
     enabled: Boolean,
     onSelect: () -> Unit,
+    onValidate: () -> Unit,
     onDelete: () -> Unit,
 ) {
     MoboCard(borderColor = if (active) MoboColors.LimeDark else MoboColors.Outline) {
@@ -286,6 +286,13 @@ private fun WorldCard(
                     color = MoboColors.TextSecondary,
                     fontSize = 11.sp,
                 )
+                if (world.originalBytes > 0) {
+                    Text(
+                        text = "Cópia do .mcworld guardada (${formatSize(world.originalBytes)})",
+                        color = MoboColors.TextSecondary.copy(alpha = 0.8f),
+                        fontSize = 10.sp,
+                    )
+                }
             }
             if (active) {
                 Box(
@@ -310,6 +317,13 @@ private fun WorldCard(
                 Text(if (active) "Selecionado" else "Usar este mundo", fontSize = 12.sp)
             }
             OutlinedButton(
+                onClick = onValidate,
+                enabled = enabled,
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Text("Validar", fontSize = 12.sp)
+            }
+            OutlinedButton(
                 onClick = onDelete,
                 enabled = enabled,
                 shape = RoundedCornerShape(14.dp),
@@ -323,62 +337,6 @@ private fun WorldCard(
             }
         }
     }
-}
-
-@Composable
-private fun CreateWorldDialog(
-    onDismiss: () -> Unit,
-    onCreate: (name: String, generator: String) -> Unit,
-) {
-    var name by remember { mutableStateOf("Meu mundo novo") }
-    var generator by remember { mutableStateOf("terrain") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Novo mundo") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it.take(32) },
-                    label = { Text("Nome do mundo") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                )
-                Spacer(Modifier.height(14.dp))
-                Text("Tipo de mundo", color = MoboColors.TextSecondary, fontSize = 12.sp)
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SelectablePill(
-                        text = "Terreno natural",
-                        selected = generator == "terrain",
-                        onClick = { generator = "terrain" },
-                    )
-                    SelectablePill(
-                        text = "Superflat",
-                        selected = generator == "flat",
-                        onClick = { generator = "flat" },
-                    )
-                }
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "O mundo é gerado no primeiro início do servidor. Terreno natural tem colinas, praias, árvores e minérios.",
-                    color = MoboColors.TextSecondary,
-                    fontSize = 11.sp,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onCreate(name.ifBlank { "Novo mundo" }, generator) }) {
-                Text("Criar")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar") }
-        },
-        containerColor = MoboColors.SurfaceHigh,
-    )
 }
 
 private fun formatSize(bytes: Long): String = when {

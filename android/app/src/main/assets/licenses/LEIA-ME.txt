@@ -1,0 +1,10 @@
+Fontes incluídas neste aplicativo
+=================================
+
+Silkscreen (Silkscreen-Regular.ttf)
+  Autor:  The Silkscreen Project Authors
+          https://github.com/googlefonts/silkscreen
+  Licença: SIL Open Font License 1.1 (texto completo em SILKSCREEN-OFL.txt)
+  Uso aqui: nomes dos jogadores na lista de jogadores online, no estilo
+  pixelado do Minecraft. A licença OFL permite redistribuir a fonte dentro
+  do aplicativo, desde que o texto da licença acompanhe a distribuição.

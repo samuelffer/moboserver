@@ -57,6 +57,7 @@ import com.moboserver.app.core.PlayerInfo
 import com.moboserver.app.core.RuntimeState
 import com.moboserver.app.core.ServerConfig
 import com.moboserver.app.core.ServerStatus
+import com.moboserver.app.core.sameSubnet
 import kotlinx.coroutines.delay
 
 @Composable
@@ -141,7 +142,7 @@ fun HomeScreen(
 
         Spacer(Modifier.height(12.dp))
         PlayersCard(
-            players = state.players,
+            state = state,
             maxPlayers = maxPlayers,
             running = running,
             onKick = { playerToRemove = it },
@@ -417,11 +418,18 @@ private fun BadgePill(text: String) {
 
 @Composable
 private fun PlayersCard(
-    players: List<PlayerInfo>,
+    state: RuntimeState,
     maxPlayers: Int,
     running: Boolean,
     onKick: (PlayerInfo) -> Unit,
 ) {
+    val players = state.players
+    // Endereços locais conhecidos: usados só para o selo "LAN" (o protocolo não
+    // informa por qual transporte o jogador entrou).
+    val lanIps = buildList {
+        state.info?.lanTargets?.forEach { if (it.ip.isNotBlank()) add(it.ip) }
+        state.exposure.lanIp?.let { add(it) }
+    }
     MoboCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
@@ -453,27 +461,16 @@ private fun PlayersCard(
         } else {
             players.forEach { player ->
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    PlayerAvatar(player.name)
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = player.name,
-                            color = MoboColors.TextPrimary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
+                    Box(modifier = Modifier.weight(1f)) {
+                        PlayerRow(
+                            player = player,
+                            avatar = state.avatars[player.key],
+                            lan = lanIps.any { ip -> sameSubnet(ip, player.addr) },
+                            onClick = { onKick(player) },
                         )
-                        if (player.device.isNotBlank()) {
-                            Text(
-                                text = player.device,
-                                color = MoboColors.TextSecondary,
-                                fontSize = 11.sp,
-                            )
-                        }
                     }
                     TextButton(onClick = { onKick(player) }) {
                         Text("Gerenciar", color = MoboColors.TextSecondary, fontSize = 12.sp)

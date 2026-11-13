@@ -238,6 +238,44 @@ fun SettingsScreen() {
 
         Spacer(Modifier.height(12.dp))
         MoboCard {
+            SectionTitle("Configurações avançadas")
+            Spacer(Modifier.height(6.dp))
+            SwitchRow(
+                title = "Compatibilidade RakNet",
+                description = "Desativada por padrão. Liga o transporte antigo (UDP) usado pela aba LAN do " +
+                    "Minecraft. Sem ela, o servidor NÃO aparece na aba LAN: quem entra usa endereço e porta " +
+                    "pelo NetherNet. Ligue só se precisar da descoberta automática em rede local.",
+                checked = draft.rakNet,
+                onChange = { draft = draft.copy(rakNet = it) },
+            )
+            SwitchRow(
+                title = "Diagnóstico avançado",
+                description = "Mostra as linhas DEBUG no console. Desligado, o console exibe INFO, avisos e erros.",
+                checked = draft.advancedDiagnostics,
+                onChange = { draft = draft.copy(advancedDiagnostics = it) },
+            )
+            Spacer(Modifier.height(8.dp))
+            FormRow(label = "Endereço externo (domínio opcional)") {
+                OutlinedTextField(
+                    value = draft.externalHost,
+                    onValueChange = { draft = draft.copy(externalHost = it.trim().take(120)) },
+                    placeholder = { Text("casa.exemplo.com", fontSize = 13.sp) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                )
+            }
+            Text(
+                "Só exibição: o app não cria túnel NetherNet nem publica entrada externa sozinho. " +
+                    "O relay atual encaminha UDP/RakNet, então um domínio apontando para ele não atende " +
+                    "quem entra por NetherNet.",
+                color = MoboColors.TextSecondary,
+                fontSize = 10.sp,
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+        MoboCard {
             SectionTitle("Acesso sem mexer no roteador (túnel)")
             Spacer(Modifier.height(6.dp))
             Text(

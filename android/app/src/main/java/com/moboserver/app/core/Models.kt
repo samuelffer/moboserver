@@ -122,3 +122,28 @@ data class RuntimeState(
     /** Latência agregada dos últimos 60 s, uma amostra a cada atualização. */
     val pingHistory: List<PingSample> = emptyList(),
 )
+
+/** Endereço sem a porta, aceitando "[::1]:19132" e "192.168.0.10:54535". */
+fun ipOf(addr: String): String {
+    val trimmed = addr.trim()
+    if (trimmed.startsWith("[")) {
+        val close = trimmed.indexOf(']')
+        if (close > 0) return trimmed.substring(1, close)
+    }
+    val colon = trimmed.lastIndexOf(':')
+    if (colon > 0 && trimmed.count { it == ':' } == 1) return trimmed.substring(0, colon)
+    return trimmed
+}
+
+/**
+ * Diz se dois endereços estão na mesma sub-rede /24. Não existe campo de
+ * transporte no protocolo do servidor, então o selo "LAN" da interface usa esta
+ * comparação com os endereços locais do aparelho: é uma inferência, não uma
+ * informação enviada pelo jogo.
+ */
+fun sameSubnet(a: String, b: String): Boolean {
+    val ipA = ipOf(a).split('.')
+    val ipB = ipOf(b).split('.')
+    if (ipA.size != 4 || ipB.size != 4) return false
+    return ipA[0] == ipB[0] && ipA[1] == ipB[1] && ipA[2] == ipB[2]
+}

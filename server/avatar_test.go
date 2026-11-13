@@ -54,14 +54,15 @@ func near(t *testing.T, got, want uint8, label string) {
 func TestAvatarFaceCrop(t *testing.T) {
 	s := skin.New(64, 64)
 	face := color.RGBA{R: 10, G: 20, B: 30, A: 255}
-	fillSkin(&s, 8, 8, 8, face)
+	fillSkin(&s, 8, 8, 4, face)
 
 	res := renderAvatar(s)
 	if res.Layout != "64x64" {
 		t.Fatalf("layout %q", res.Layout)
 	}
 	img := decodeAvatar(t, res)
-	// Cada pixel da textura vira um bloco 8x8 na miniatura.
+	// Cada pixel da textura vira um bloco de 8x8 na miniatura; 4 pixels
+	// preenchidos ocupam só o canto superior esquerdo.
 	got := img.RGBAAt(0, 0)
 	if got.R != face.R || got.G != face.G || got.B != face.B || got.A != 255 {
 		t.Fatalf("pixel (0,0) = %v, esperava %v", got, face)

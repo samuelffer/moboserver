@@ -5,6 +5,10 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import com.moboserver.app.R
 
 object MoboColors {
     val Lime = Color(0xFF8BE04A)
@@ -19,6 +23,17 @@ object MoboColors {
     val Danger = Color(0xFFFF6B6B)
     val Warning = Color(0xFFFFC24B)
     val Info = Color(0xFF62B6FF)
+}
+
+/**
+ * Fonte pixelada dos nomes de jogador (Silkscreen, SIL Open Font License 1.1).
+ * O texto da licença acompanha o APK em assets/licenses/SILKSCREEN-OFL.txt.
+ */
+object MoboFonts {
+    val Pixel: FontFamily = FontFamily(
+        Font(R.font.silkscreen, FontWeight.Normal),
+        Font(R.font.silkscreen, FontWeight.Bold),
+    )
 }
 
 private val DarkScheme = darkColorScheme(
