@@ -560,6 +560,7 @@ private fun HowToCard(port: Int, lanIp: String?, publicIp: String?, running: Boo
         Step(2, "Endereço: ${publicIp ?: lanIp ?: "IP do celular"}")
         Step(3, "Porta: $port")
         Step(4, "Se estiverem na mesma rede Wi-Fi, use o endereço local. Fora dela, use o IP público com a porta liberada.")
+        Step(5, "Xbox, PlayStation e Switch não digitam endereço: eles entram pela aba LAN, com o console no mesmo Wi-Fi do celular.")
         if (!running) {
             Spacer(Modifier.height(6.dp))
             Text(
