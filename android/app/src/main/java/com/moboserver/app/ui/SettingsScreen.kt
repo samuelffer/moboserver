@@ -30,18 +30,22 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.moboserver.app.core.Bans
 import com.moboserver.app.core.ServerConfig
 import com.moboserver.app.core.ServerController
 import com.moboserver.app.core.Store
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen() {
@@ -221,6 +225,9 @@ fun SettingsScreen() {
             )
         }
 
+        Spacer(Modifier.height(12.dp))
+        BannedPlayersCard(runtimeStatus = runtime.status)
+
         Spacer(Modifier.height(16.dp))
         Button(
             onClick = {
@@ -367,5 +374,64 @@ private fun appVersion(): String {
         com.moboserver.app.BuildConfig.VERSION_NAME
     } catch (e: Exception) {
         "1.0.0"
+    }
+}
+
+@Composable
+private fun BannedPlayersCard(runtimeStatus: com.moboserver.app.core.ServerStatus) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var bans by remember { mutableStateOf(Bans.list(context)) }
+
+    LaunchedEffect(runtimeStatus) {
+        bans = Bans.list(context)
+    }
+
+    MoboCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SectionTitle("Jogadores banidos")
+            Spacer(Modifier.weight(1f))
+            Text("${bans.size}", color = MoboColors.TextSecondary, fontSize = 12.sp)
+        }
+        Spacer(Modifier.height(8.dp))
+        if (bans.isEmpty()) {
+            Text(
+                "Ninguém banido. Você pode banir um jogador online na tela inicial.",
+                color = MoboColors.TextSecondary,
+                fontSize = 12.sp,
+            )
+        } else {
+            bans.forEach { ban ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = ban.name.ifBlank { "Jogador sem nome" },
+                            color = MoboColors.TextPrimary,
+                            fontSize = 13.sp,
+                        )
+                        Text(
+                            text = ban.xuid,
+                            color = MoboColors.TextSecondary,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                    TextButton(onClick = {
+                        ServerController.unban(ban.xuid)
+                        scope.launch {
+                            delay(900)
+                            bans = Bans.list(context)
+                        }
+                    }) {
+                        Text("Desbanir", color = MoboColors.Lime, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
     }
 }

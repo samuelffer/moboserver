@@ -230,11 +230,16 @@ private fun StatusCard(
     val starting = state.status == ServerStatus.STARTING
     val stopping = state.status == ServerStatus.STOPPING
     val primaryAddress = when {
+        !running && state.status != ServerStatus.STOPPING -> "desligado"
         publicIp != null && upnpOk -> "$publicIp:$port"
         !lanIp.isNullOrBlank() -> "$lanIp:$port"
         else -> "aguardando rede..."
     }
-    val primaryLabel = if (publicIp != null && upnpOk) "Endereço pela internet" else "Endereço na rede Wi-Fi"
+    val primaryLabel = if (running && publicIp != null && upnpOk) {
+        "Endereço pela internet"
+    } else {
+        "Endereço na rede Wi-Fi"
+    }
 
     Box(
         modifier = Modifier

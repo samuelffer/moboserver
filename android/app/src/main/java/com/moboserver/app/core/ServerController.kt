@@ -132,9 +132,10 @@ object ServerController {
 
         val sent = process.send(command("stop").toString())
         scope.launch {
-            delay(2_000)
+            delay(3_000)
             if (!sent) process.destroy()
-            delay(18_000)
+            // Saving a big world can take a while; never kill it before that.
+            delay(57_000)
             if (process.isAlive) {
                 appendLog("warn", "O servidor não respondeu a tempo, encerrando à força.")
                 process.destroy()
@@ -168,6 +169,15 @@ object ServerController {
         val text = message.trim()
         if (text.isEmpty()) return
         sendCommand(command("say").put("msg", text))
+    }
+
+    fun unban(xuid: String) {
+        if (xuid.isBlank()) return
+        val sent = sendCommand(command("unban").put("xuid", xuid))
+        if (!sent) {
+            appContext?.let { Bans.remove(it, xuid) }
+        }
+        appendLog("info", "Banimento removido.")
     }
 
     fun saveWorld() {
@@ -374,7 +384,9 @@ object ServerController {
     private fun buildEnvironment(context: Context): Map<String, String> {
         val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         val memoryClass = activityManager?.memoryClass ?: 192
-        val memoryLimit = (memoryClass / 2).coerceIn(192, 1024)
+        // The Go runtime shares the process with the JVM, so its soft memory
+        // limit is kept close to the app heap class instead of the device RAM.
+        val memoryLimit = memoryClass.coerceIn(256, 1024)
         val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
         return mapOf(
             "TMPDIR" to context.cacheDir.absolutePath,
