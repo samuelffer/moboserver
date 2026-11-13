@@ -42,6 +42,19 @@ object Net {
         return fallback
     }
 
+    /** Default gateway (the router) of the active network, if there is one. */
+    fun gatewayIp(context: android.content.Context): String? = try {
+        val manager = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+            as android.net.ConnectivityManager
+        val properties = manager.activeNetwork?.let { manager.getLinkProperties(it) }
+        properties?.routes
+            ?.firstOrNull { it.isDefaultRoute && it.gateway is java.net.Inet4Address }
+            ?.gateway
+            ?.hostAddress
+    } catch (e: Exception) {
+        null
+    }
+
     /** 100.64.0.0/10 — shared address space used by CGNAT and some hotspots. */
     fun isCarrierGradeNat(ip: String): Boolean {
         val parts = ip.split('.')

@@ -137,6 +137,7 @@ object ServerController {
         }
         if (stopRequested) return
         stopRequested = true
+        LanProbe.stop()
         _state.value = _state.value.copy(status = ServerStatus.STOPPING)
         appendLog("info", "Desligando o servidor e salvando o mundo...")
 
@@ -283,6 +284,37 @@ object ServerController {
         }
     }
 
+    /**
+     * Serves a tiny status page so a PC can prove the LAN path works. It is
+     * stopped together with the server.
+     */
+    private fun startProbePage(
+        port: Int,
+        version: String,
+        protocol: Int,
+        maxPlayers: Int,
+        authEnabled: Boolean,
+    ) {
+        val lanIp = Net.lanIp()
+        val probePort = LanProbe.start(8080) {
+            buildString {
+                appendLine("Servidor: ${Store.config.value.serverName}")
+                appendLine("Endereço no Minecraft: ${lanIp ?: "IP do celular"}:$port")
+                appendLine("Versão: $version (protocolo $protocol)")
+                appendLine("Jogadores: ${_state.value.players.size}/$maxPlayers")
+                appendLine("Modo: ${if (authEnabled) "exige conta Microsoft" else "aberto (sem login)"}")
+            }
+        }
+        if (probePort > 0) {
+            appendLog(
+                "info",
+                "Teste de rede: abra http://${lanIp ?: "IP do celular"}:$probePort no navegador do PC " +
+                    "para confirmar que o celular está acessível.",
+            )
+            _state.value = _state.value.copy(info = _state.value.info?.copy(probePort = probePort))
+        }
+    }
+
     // ---------------------------------------------------------------- internal
 
     private fun watchStartup(process: ServerProcess) {
@@ -308,10 +340,25 @@ object ServerController {
                     error = null,
                 )
                 appendLog("info", "Servidor online! Minecraft Bedrock ${event.version} • porta ${event.port}")
+                startProbePage(event.port, event.version, event.protocol, event.maxPlayers, event.authEnabled)
                 refreshExposure(forward = Store.config.value.autoForward)
             }
 
             is ServerEvent.Log -> appendLog(event.level, event.message)
+
+            is ServerEvent.Lan -> {
+                _state.value = _state.value.copy(
+                    info = _state.value.info?.copy(lanTargets = event.targets),
+                )
+                val reachable = event.targets.filter { it.ok }
+                if (reachable.isEmpty() && event.targets.isNotEmpty()) {
+                    appendLog(
+                        "warn",
+                        "O servidor não respondeu em nenhum endereço local. " +
+                            "Se o problema persistir, desative VPN/firewall do aparelho.",
+                    )
+                }
+            }
 
             is ServerEvent.Join -> {
                 val players = _state.value.players.toMutableList()
@@ -347,6 +394,7 @@ object ServerController {
 
             is ServerEvent.Exited -> {
                 serverProcess = null
+                LanProbe.stop()
                 if (stopRequested) {
                     stopRequested = false
                     if (_state.value.status == ServerStatus.STOPPING) {

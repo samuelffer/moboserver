@@ -22,6 +22,7 @@ sealed class ServerEvent {
         val authEnabled: Boolean,
     ) : ServerEvent()
     data class Log(val level: String, val message: String) : ServerEvent()
+    data class Lan(val targets: List<LanTarget>) : ServerEvent()
     data class Join(val player: PlayerInfo) : ServerEvent()
     data class Quit(val name: String) : ServerEvent()
     data class Players(val players: List<PlayerInfo>) : ServerEvent()
@@ -120,6 +121,23 @@ class ServerProcess(
                     authEnabled = obj.optBoolean("auth", true),
                 )
             )
+            "lan" -> {
+                val array = obj.optJSONArray("targets")
+                val targets = ArrayList<LanTarget>()
+                if (array != null) {
+                    for (index in 0 until array.length()) {
+                        val item = array.optJSONObject(index) ?: continue
+                        targets.add(
+                            LanTarget(
+                                iface = item.optString("iface"),
+                                ip = item.optString("ip"),
+                                ok = item.optBoolean("ok"),
+                            ),
+                        )
+                    }
+                }
+                listener(ServerEvent.Lan(targets))
+            }
             "join" -> listener(
                 ServerEvent.Join(
                     PlayerInfo(

@@ -1,5 +1,7 @@
 package com.moboserver.app.ui
 
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -32,27 +34,35 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.moboserver.app.core.Diagnostics
 import com.moboserver.app.core.LogLine
 import com.moboserver.app.core.ServerController
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ConsoleScreen() {
     val state by ServerController.state.collectAsState()
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     var input by remember { mutableStateOf("") }
     var lastSize by remember { mutableStateOf(0) }
@@ -82,6 +92,16 @@ fun ConsoleScreen() {
             }
             TextButton(onClick = { clipboard.setText(AnnotatedString(ServerController.logText())) }) {
                 Text("Copiar", color = MoboColors.TextSecondary, fontSize = 12.sp)
+            }
+            TextButton(
+                onClick = {
+                    scope.launch {
+                        val report = withContext(Dispatchers.IO) { Diagnostics.report(context) }
+                        shareText(context, report)
+                    }
+                },
+            ) {
+                Text("Diagnóstico", color = MoboColors.TextSecondary, fontSize = 12.sp)
             }
             TextButton(onClick = { ServerController.clearLogs() }) {
                 Text("Limpar", color = MoboColors.TextSecondary, fontSize = 12.sp)
@@ -173,5 +193,19 @@ private fun LogRow(line: LogLine) {
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
         )
+    }
+}
+
+/** Shares plain text through any installed app (email, chat, notes). */
+private fun shareText(context: Context, text: String) {
+    try {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "MoboServer — diagnóstico")
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        context.startActivity(Intent.createChooser(intent, "Compartilhar diagnóstico"))
+    } catch (e: Exception) {
+        // no app able to receive text: nothing to do
     }
 }

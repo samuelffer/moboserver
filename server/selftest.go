@@ -108,6 +108,28 @@ func runSelftest(opts options, log *slog.Logger) int {
 		return 1
 	}
 
+	// The loopback ping above only proves the socket exists. This one proves the
+	// server answers on a real interface address, which is exactly what breaks
+	// when the listen address or the socket binding is wrong.
+	if targets := localIPv4s(); len(targets) > 0 {
+		target := targets[0]
+		address := fmt.Sprintf("%s:%d", target.IP, opts.Port)
+		lanMotd, err := pingServer(address, 8*time.Second)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "selftest: ping via %s (%s) failed: %v\n", address, target.Iface, err)
+			cancel()
+			<-done
+			return 1
+		}
+		if !strings.HasPrefix(lanMotd, "MCPE;") {
+			fmt.Fprintf(os.Stderr, "selftest: unexpected pong via %s\n", address)
+			cancel()
+			<-done
+			return 1
+		}
+		fmt.Fprintf(os.Stderr, "selftest: interface %s (%s) respondeu no ping\n", target.Iface, target.IP)
+	}
+
 	cancel()
 	if err := <-done; err != nil {
 		fmt.Fprintln(os.Stderr, "selftest: shutdown:", err)

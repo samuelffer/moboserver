@@ -18,12 +18,17 @@ data class LogLine(
 )
 
 /** Static information reported by the server once it is listening. */
+/** One address the server answered a ping on, seen from the device itself. */
+data class LanTarget(val iface: String, val ip: String, val ok: Boolean)
+
 data class ServerInfo(
     val port: Int,
     val mcVersion: String,
     val protocol: Int,
     val maxPlayers: Int,
     val authEnabled: Boolean = true,
+    val lanTargets: List<LanTarget> = emptyList(),
+    val probePort: Int = 0,
 )
 
 /** State of the "can my friends reach this?" checks. */

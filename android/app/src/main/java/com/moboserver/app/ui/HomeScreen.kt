@@ -491,6 +491,25 @@ private fun ExposureCard(
             value = exposure.lanIp?.let { "$it:$port" } ?: "sem Wi-Fi (dados móveis)",
             mono = true,
         )
+        val reachable = state.info?.lanTargets.orEmpty().filter { it.ok }.map { it.ip }
+        InfoLine(
+            label = "Auto-teste",
+            value = when {
+                state.info?.lanTargets.isNullOrEmpty() -> "verificando..."
+                reachable.isEmpty() -> "o celular não respondeu"
+                else -> reachable.joinToString(", ")
+            },
+            mono = true,
+            valueColor = if (reachable.isEmpty()) MoboColors.Warning else MoboColors.Lime,
+        )
+        val probePort = state.info?.probePort ?: 0
+        if (probePort > 0 && exposure.lanIp != null) {
+            InfoLine(
+                label = "Teste no PC",
+                value = "http://${exposure.lanIp}:$probePort",
+                mono = true,
+            )
+        }
         InfoLine(
             label = "IP público",
             value = exposure.publicIp?.let { "$it:$port" } ?: "verificando...",
@@ -525,6 +544,25 @@ private fun ExposureCard(
                     "por dados móveis geralmente não dá para receber conexões de fora. " +
                     "Ligue o Wi-Fi para jogar com quem está perto de você.",
                 color = MoboColors.Warning,
+                fontSize = 12.sp,
+            )
+        }
+        if (running && reachable.isEmpty() && !state.info?.lanTargets.isNullOrEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "O servidor não respondeu em nenhum endereço local: desative VPN/apps de firewall " +
+                    "do celular e tente de novo.",
+                color = MoboColors.Warning,
+                fontSize = 12.sp,
+            )
+        }
+        if (running && reachable.isNotEmpty() && probePort > 0) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Se o PC não abre a página de teste acima, o roteador está isolando os aparelhos " +
+                    "(isolamento de AP ou redes diferentes). Se abre mas o Minecraft não conecta, " +
+                    "use o endereço mostrado em \"Rede Wi-Fi\".",
+                color = MoboColors.TextSecondary,
                 fontSize = 12.sp,
             )
         }

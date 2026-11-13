@@ -9,6 +9,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.HttpURLConnection
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.URL
 import javax.xml.parsers.DocumentBuilderFactory
 
@@ -32,7 +33,7 @@ object Upnp {
     fun forward(context: Context, port: Int, localIp: String): UpnpResult {
         val lock = acquireMulticastLock(context)
         try {
-            val services = discover()
+            val services = discover(localIp, context)
             if (services.isEmpty()) {
                 return UpnpResult(
                     false,
@@ -64,26 +65,59 @@ object Upnp {
 
     private data class Service(val controlUrl: String, val serviceType: String)
 
-    private fun discover(): List<Service> {
+    /**
+     * SSDP search for the router. The socket is bound to the Wi-Fi address when
+     * one is known: on phones with mobile data + Wi-Fi at the same time, the
+     * default route may be the cellular link, and a wildcard socket would then
+     * send the search where no router is listening (this is why "no router with
+     * UPnP" used to show up on phones that do have it).
+     */
+    private fun discover(localIp: String?, context: Context): List<Service> {
         val locations = LinkedHashSet<String>()
-        DatagramSocket().use { socket ->
-            socket.soTimeout = 1500
-            val request = buildString {
-                append("M-SEARCH * HTTP/1.1\r\n")
-                append("HOST: $SSDP_ADDRESS:$SSDP_PORT\r\n")
-                append("MAN: \"ssdp:discover\"\r\n")
-                append("MX: 2\r\n")
-                append("ST: urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n")
-                append("\r\n")
-            }.toByteArray()
+        val socket = DatagramSocket(null)
+        socket.use {
+            try {
+                socket.reuseAddress = true
+                if (localIp != null) {
+                    socket.bind(InetSocketAddress(localIp, 0))
+                } else {
+                    socket.bind(InetSocketAddress(0))
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "bind ssdp: ${e.message}")
+                try {
+                    socket.bind(InetSocketAddress(0))
+                } catch (e2: Exception) {
+                    return emptyList()
+                }
+            }
+            socket.soTimeout = 1200
+            val requests = listOf(
+                "urn:schemas-upnp-org:device:InternetGatewayDevice:1",
+                "upnp:rootdevice",
+            ).map { type ->
+                buildString {
+                    append("M-SEARCH * HTTP/1.1\r\n")
+                    append("HOST: $SSDP_ADDRESS:$SSDP_PORT\r\n")
+                    append("MAN: \"ssdp:discover\"\r\n")
+                    append("MX: 2\r\n")
+                    append("ST: ").append(type).append("\r\n")
+                    append("\r\n")
+                }.toByteArray()
+            }
 
             val group = InetAddress.getByName(SSDP_ADDRESS)
-            repeat(2) {
-                try {
-                    socket.send(DatagramPacket(request, request.size, group, SSDP_PORT))
-                } catch (e: Exception) {
-                    // keep going: some networks drop the first packet
+            // Three rounds: routers frequently drop the first multicast packet
+            // while the Wi-Fi link is still waking up.
+            repeat(3) { round ->
+                for (request in requests) {
+                    try {
+                        socket.send(DatagramPacket(request, request.size, group, SSDP_PORT))
+                    } catch (e: Exception) {
+                        // keep going
+                    }
                 }
+                if (round < 2) Thread.sleep(350)
             }
 
             val buffer = ByteArray(4096)
@@ -106,6 +140,13 @@ object Upnp {
                     break // socket timeout: no more answers
                 }
             }
+        }
+
+        // Fallback: some routers ignore SSDP but serve the IGD description.
+        Net.gatewayIp(context)?.let { gateway ->
+            locations.add("http://$gateway:5000/rootDesc.xml")
+            locations.add("http://$gateway:49152/description.xml")
+            locations.add("http://$gateway/rootDesc.xml")
         }
 
         val services = ArrayList<Service>()

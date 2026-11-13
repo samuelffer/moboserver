@@ -24,7 +24,7 @@ import (
 
 // appVersion is the version of the embedded server, kept in sync with the
 // Android app version by the build workflow.
-const appVersion = "1.0.6"
+const appVersion = "1.0.7"
 
 // options holds every command line flag the Android app passes to the server
 // process. Everything is explicit: the process never reads a config file, so
@@ -243,6 +243,23 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	if opts.Lan {
 		startLanAnnouncer(ctx, srv, opts)
 	}
+
+	// Auto teste: o servidor pinga a si mesmo em cada IPv4 do aparelho. Isso
+	// separa "o servidor nao esta escutando" de "a rede nao entrega o pacote",
+	// que e a duvida numero 1 de quem nao consegue conectar.
+	go func() {
+		targets := probeInterfaces(opts.Port, localIPv4s())
+		for _, target := range targets {
+			if target.OK {
+				emitLog("info", fmt.Sprintf("Servidor responde em %s:%d (%s)", target.IP, opts.Port, target.Iface))
+			} else {
+				emitLog("warn", fmt.Sprintf("Servidor NAO respondeu em %s:%d (%s). "+
+					"Verifique VPN, firewall do aparelho ou isolamento de rede no roteador.",
+					target.IP, opts.Port, target.Iface))
+			}
+		}
+		emit(map[string]any{"t": "lan", "targets": targets})
+	}()
 
 	go rt.acceptLoop()
 	go rt.commandLoop(ctx)

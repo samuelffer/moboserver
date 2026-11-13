@@ -27,6 +27,54 @@ object Diagnostics {
         }.trim()
     }
 
+    /**
+     * Everything needed to debug a phone that nobody can reach: device, network
+     * interfaces, addresses, exposure state and the tail of the server log. It is
+     * shared as plain text, so the user can send it without installing anything.
+     */
+    fun report(context: Context): String = buildString {
+        val state = ServerController.state.value
+        appendLine("== MoboServer — diagnostico ==")
+        appendLine(java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date()))
+        appendLine()
+        appendLine("-- Aparelho --")
+        appendLine(summary(context))
+        appendLine()
+        appendLine("-- Interfaces --")
+        try {
+            for (iface in java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())) {
+                if (!iface.isUp) continue
+                val addresses = java.util.Collections.list(iface.inetAddresses)
+                    .joinToString(", ") { it.hostAddress ?: "?" }
+                appendLine("${iface.name} (up=${iface.isUp}, mtu=${iface.mtu}): $addresses")
+            }
+        } catch (e: Exception) {
+            appendLine("falha ao listar interfaces: ${e.message}")
+        }
+        val lan = Net.lanIp()
+        appendLine()
+        appendLine("-- Rede --")
+        appendLine("IP local escolhido: ${lan ?: "nenhum"}")
+        appendLine("Gateway: ${Net.gatewayIp(context) ?: "desconhecido"}")
+        appendLine("IP publico (STUN): ${Net.publicIp() ?: "nao descoberto"}")
+        appendLine("CGNAT: ${if (lan != null && Net.isCarrierGradeNat(lan)) "sim" else "nao"}")
+        appendLine()
+        appendLine("-- Servidor --")
+        appendLine("Status: ${state.status}")
+        appendLine("Info: ${state.info}")
+        appendLine("Exposure: ${state.exposure}")
+        appendLine("Erro: ${state.error ?: "nenhum"}")
+        appendLine()
+        appendLine("-- Log (ultimas 120 linhas) --")
+        val file = File(context.filesDir, "server.log")
+        if (file.isFile) {
+            val lines = file.readLines()
+            lines.takeLast(120).forEach { appendLine(it) }
+        } else {
+            appendLine("sem arquivo de log")
+        }
+    }.toString()
+
     /** Runs `mobosrv -version` and returns whatever it printed. */
     fun testBinary(context: Context): String {
         val binary = try {
