@@ -12,7 +12,7 @@ import (
 
 // editorTag is the exact tag reported by the user's world (Minecraft 26.63
 // writes it when the world is opened in the editor build).
-const editorTag = ".editorLevelMigrationVersion"
+const editorTag = "editorLevelMigrationVersion"
 
 // buildLevelDat writes a level.dat with the given data and appends the extra
 // TAG_Int tag, exactly like a newer Minecraft build does.
@@ -56,9 +56,6 @@ func buildLevelDat(t *testing.T, dir string, data leveldat.Data, extraInt int32)
 	if err := writeLevelDat(path, int32(version), merged); err != nil {
 		t.Fatalf("write level.dat: %v", err)
 	}
-	t.Logf("DEBUG payload len=%d rootEnd=%d firstType=%#x lastSpan=%+v inserted=%x",
-		len(merged), end, merged[0], spans[len(spans)-1], tag)
-	t.Logf("DEBUG head=%x tail=%x", merged[:12], merged[end-6:])
 	return path
 }
 
@@ -70,6 +67,43 @@ func (b *fixedBuffer) Write(p []byte) (int, error) {
 }
 
 func (b *fixedBuffer) Bytes() []byte { return b.data }
+
+// TestLevelDatAcceptsDottedTag covers a world written with a leading dot in the
+// tag name, which the decoder reports as "..name".
+func TestLevelDatAcceptsDottedTag(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "level.dat")
+	var ld leveldat.LevelDat
+	if err := ld.Marshal(&leveldat.Data{LevelName: "com ponto", StorageVersion: 10}); err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	buf := &fixedBuffer{}
+	if err := ld.Write(buf); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	raw := buf.Bytes()
+	payload := raw[8:]
+	_, end, err := nbtScan(payload)
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	name := "." + editorTag
+	extra := []byte{0x03, byte(len(name)), byte(len(name) >> 8)}
+	extra = append(extra, []byte(name)...)
+	extra = append(extra, 1, 0, 0, 0)
+	merged := append(append(append([]byte{}, payload[:end]...), extra...), payload[end:]...)
+	if err := writeLevelDat(path, int32(binary.LittleEndian.Uint32(raw[0:4])), merged); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	fix, err := prepareLevelDat(path)
+	if err != nil {
+		t.Fatalf("prepareLevelDat: %v", err)
+	}
+	if fix == nil || len(fix.Names) != 1 || fix.Names[0] != name {
+		t.Fatalf("tag com ponto não foi preservada: %+v", fix)
+	}
+}
 
 // TestLevelDatAcceptsEditorTag is the regression test for the reported failure:
 // a level.dat carrying '.editorLevelMigrationVersion' must open for the engine

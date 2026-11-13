@@ -31,6 +31,8 @@ sealed class ServerEvent {
         val iceHosts: List<String> = emptyList(),
         val iceInterfaceCount: Int = 0,
         val iceError: String = "",
+        val transports: List<String> = emptyList(),
+        val signalingLatencyMs: Long = -1,
     ) : ServerEvent()
     data class Log(val level: String, val message: String) : ServerEvent()
     data class Lan(val targets: List<LanTarget>) : ServerEvent()
@@ -38,6 +40,22 @@ sealed class ServerEvent {
     data class Join(val player: PlayerInfo) : ServerEvent()
     data class Quit(val name: String) : ServerEvent()
     data class Players(val players: List<PlayerInfo>) : ServerEvent()
+
+    /**
+     * Miniatura da cabeça, enviada só na entrada ou quando o jogador troca de
+     * skin. [png] é o PNG de 64x64 em base64 e [session] identifica a execução
+     * do servidor, para descartar imagens de sessões antigas.
+     */
+    data class PlayerAvatar(
+        val name: String,
+        val xuid: String,
+        val session: Long,
+        val available: Boolean,
+        val hash: String,
+        val layout: String,
+        val reason: String,
+        val png: String,
+    ) : ServerEvent()
     data class Fatal(val message: String) : ServerEvent()
     data object Stopped : ServerEvent()
     data class Exited(val code: Int) : ServerEvent()
@@ -157,6 +175,8 @@ class ServerProcess(
                         iceHosts = hosts,
                         iceInterfaceCount = interfaces.size,
                         iceError = ice?.optString("error").orEmpty(),
+                        transports = readStrings(obj.optJSONArray("transports")),
+                        signalingLatencyMs = signaling?.optLong("latencyMs") ?: -1L,
                     ),
                 )
             }
@@ -196,6 +216,18 @@ class ServerProcess(
             )
             "quit" -> listener(ServerEvent.Quit(obj.optString("name")))
             "players" -> listener(ServerEvent.Players(readPlayers(obj)))
+            "player_avatar" -> listener(
+                ServerEvent.PlayerAvatar(
+                    name = obj.optString("name"),
+                    xuid = obj.optString("xuid"),
+                    session = obj.optLong("session"),
+                    available = obj.optBoolean("available", false),
+                    hash = obj.optString("hash"),
+                    layout = obj.optString("layout"),
+                    reason = obj.optString("reason"),
+                    png = obj.optString("png"),
+                ),
+            )
             "fatal" -> listener(ServerEvent.Fatal(obj.optString("msg")))
             "stopped" -> listener(ServerEvent.Stopped)
             else -> listener(ServerEvent.Log("debug", line))
@@ -212,10 +244,25 @@ class ServerProcess(
                     name = item.optString("name"),
                     xuid = item.optString("xuid"),
                     device = item.optString("device"),
+                    addr = item.optString("addr"),
+                    // O servidor manda -1 quando não há medição; qualquer valor
+                    // negativo é tratado igual para não exibir lixo.
+                    pingMs = item.optLong("ping", -1L),
+                    transport = item.optString("transport"),
                 )
             )
         }
         return list
+    }
+
+    private fun readStrings(array: org.json.JSONArray?): List<String> {
+        if (array == null) return emptyList()
+        val out = ArrayList<String>(array.length())
+        for (index in 0 until array.length()) {
+            val value = array.optString(index)
+            if (value.isNotBlank()) out.add(value)
+        }
+        return out
     }
 
     /** Sends one JSON command. Returns false when the process is gone. */

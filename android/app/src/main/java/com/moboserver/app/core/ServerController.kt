@@ -7,11 +7,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -43,6 +45,8 @@ object ServerController {
         @Volatile var finished = false
         var startJob: Job? = null
         var stopJob: Job? = null
+        /** Sessão informada pelo servidor nos eventos de avatar. */
+        var avatarSession: Long = 0L
     }
 
     private var appContext: Context? = null
@@ -106,28 +110,43 @@ object ServerController {
         val config = Store.config.value
         val repository = WorldRepository(context)
 
-        var worldId = config.activeWorldId
+        // Nada de mundo automático: o app só abre um mundo que o usuário
+        // importou do Minecraft e que passou na validação (level.dat + db/).
+        val worldId = config.activeWorldId
         if (worldId.isBlank() || !repository.exists(worldId)) {
-            val created = try {
-                repository.create("Mundo principal")
-            } catch (e: Exception) {
-                if (isCurrent(s)) fail("Não foi possível criar o mundo: ${e.message}")
-                return
+            if (isCurrent(s)) {
+                fail(
+                    "Nenhum mundo selecionado. Abra a aba Mundos e importe o .mcworld exportado pelo " +
+                        "Minecraft antes de iniciar o servidor.",
+                )
             }
-            worldId = created.id
-            Store.update { it.copy(activeWorldId = worldId) }
-            appendLog("info", "Novo mundo criado: ${created.name}")
-        }
-        if (!isCurrent(s)) return
-
-        val worldDir = repository.directory(worldId)
-        if (!worldDir.exists() && !worldDir.mkdirs()) {
-            if (isCurrent(s)) fail("Não foi possível preparar a pasta do mundo")
             return
         }
         if (!isCurrent(s)) return
-        val worldName = repository.nameOf(worldId)
-        _state.update { it.copy(worldName = worldName) }
+
+        val validation = repository.validate(worldId)
+        if (!validation.ok) {
+            if (isCurrent(s)) fail(validation.message(repository.nameOf(worldId)))
+            return
+        }
+        if (!isCurrent(s)) return
+        if (validation.fixedTags.isNotEmpty()) {
+            appendLog(
+                "warn",
+                "Metadados do level.dat preservados (${validation.fixedTags.joinToString(", ")}): " +
+                    "eles voltam ao arquivo quando o mundo é salvo.",
+            )
+        }
+
+        val worldDir = repository.directory(worldId)
+        val worldName = validation.levelName.ifBlank { repository.nameOf(worldId) }
+        _state.update {
+            it.copy(
+                worldName = worldName,
+                avatars = emptyMap(),
+                pingHistory = emptyList(),
+            )
+        }
 
         appendLog("info", "Iniciando servidor \"${config.serverName}\" na porta UDP ${config.port}")
         val binary = try {
@@ -421,6 +440,8 @@ object ServerController {
             it.copy(
                 status = ServerStatus.STOPPED,
                 players = emptyList(),
+                avatars = emptyMap(),
+                pingHistory = emptyList(),
                 info = null,
                 startedAt = null,
             )
@@ -468,6 +489,8 @@ object ServerController {
                             iceHosts = event.iceHosts,
                             iceInterfaceCount = event.iceInterfaceCount,
                             iceError = event.iceError,
+                            transports = event.transports,
+                            signalingLatencyMs = event.signalingLatencyMs,
                         ),
                         error = null,
                     )
@@ -493,6 +516,30 @@ object ServerController {
                         "Negociação ICE falhou: ${event.iceError.ifBlank { "sem detalhes" }}"
                     },
                 )
+                val transports = if (event.transports.isNotEmpty()) {
+                    event.transports.joinToString(" + ")
+                } else {
+                    when {
+                        event.raknetOk -> "raknet"
+                        event.signalingOk -> "nethernet"
+                        else -> "nenhum"
+                    }
+                }
+                appendLog("info", "Transportes ativos: $transports")
+                if (Store.config.value.rakNet && !event.raknetOk) {
+                    appendLog(
+                        "warn",
+                        "Compatibilidade RakNet está ligada, mas o listener UDP não abriu nesta porta — " +
+                            "a aba LAN do Minecraft não vai encontrar o servidor.",
+                    )
+                }
+                if (!Store.config.value.rakNet) {
+                    appendLog(
+                        "info",
+                        "Compatibilidade RakNet desligada: o servidor não aparece na aba LAN do Minecraft. " +
+                            "Quem entra usa o endereço e a porta (NetherNet).",
+                    )
+                }
                 startProbePage(s, event.port, event.version, event.protocol, event.maxPlayers, event.authEnabled)
                 refreshExposure(forward = Store.config.value.autoForward)
             }
@@ -541,7 +588,20 @@ object ServerController {
                 }
             }
 
-            is ServerEvent.Players -> _state.update { it.copy(players = event.players) }
+            is ServerEvent.Players -> {
+                _state.update { st ->
+                    val online = event.players
+                    // Miniaturas de quem saiu não ficam penduradas na memória.
+                    val keys = online.map { it.key }.toSet()
+                    st.copy(
+                        players = online,
+                        avatars = st.avatars.filterKeys { it in keys },
+                        pingHistory = recordPings(st.pingHistory, online),
+                    )
+                }
+            }
+
+            is ServerEvent.PlayerAvatar -> decodeAvatar(s, event)
 
             is ServerEvent.Stopped -> Unit
 
@@ -575,6 +635,83 @@ object ServerController {
      * Serves a tiny status page so another device can prove the TCP path works.
      * It says nothing about UDP, which is what Minecraft uses.
      */
+    /**
+     * Decodifica o PNG da cabeça fora da thread principal e só aceita 64x64.
+     * O evento carrega a sessão do servidor: imagem de uma execução anterior é
+     * descartada em vez de aparecer no lugar de outro jogador.
+     */
+    private fun decodeAvatar(s: Session, event: ServerEvent.PlayerAvatar) {
+        val key = if (event.xuid.isNotBlank()) event.xuid else event.name.lowercase()
+        if (key.isBlank()) return
+        if (!event.available || event.png.isBlank()) {
+            _state.update { st ->
+                st.copy(
+                    avatars = st.avatars + (key to PlayerAvatar(hash = event.hash, image = null, reason = event.reason)),
+                )
+            }
+            return
+        }
+        if (s.avatarSession == 0L) s.avatarSession = event.session
+        if (event.session != s.avatarSession) return
+        val cached = _state.value.avatars[key]
+        if (cached != null && cached.hash == event.hash && cached.available) return
+
+        scope.launch {
+            val bitmap = try {
+                withContext(Dispatchers.Default) {
+                    val bytes = android.util.Base64.decode(event.png, android.util.Base64.DEFAULT)
+                    val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    if (bmp != null && (bmp.width != 64 || bmp.height != 64)) {
+                        bmp.recycle()
+                        null
+                    } else {
+                        bmp
+                    }
+                }
+            } catch (e: Exception) {
+                null
+            }
+            if (!stillSame(s)) {
+                bitmap?.recycle()
+                return@launch
+            }
+            if (bitmap == null) {
+                _state.update { st ->
+                    st.copy(avatars = st.avatars + (key to PlayerAvatar(event.hash, null, event.layout, "imagem inválida")))
+                }
+                return@launch
+            }
+            val image = bitmap.asImageBitmap()
+            _state.update { st ->
+                // Só mantém se o jogador continua online: uma saída durante a
+                // decodificação não pode ressuscitar a linha dele.
+                if (st.players.none { it.key == key }) {
+                    st
+                } else {
+                    st.copy(avatars = st.avatars + (key to PlayerAvatar(event.hash, image, event.layout, "")))
+                }
+            }
+        }
+    }
+
+    /** Mediana/mínimo/máximo dos pings válidos, guardando os últimos 60 s. */
+    private fun recordPings(history: List<PingSample>, players: List<PlayerInfo>): List<PingSample> {
+        val valid = players.map { it.pingMs }.filter { it > 0 }.sorted()
+        val now = System.currentTimeMillis()
+        val kept = history.filter { now - it.at <= 60_000L }
+        if (valid.isEmpty()) {
+            // Sem medição: registra a ausência para a aba Conexão poder dizer
+            // "sem amostras" em vez de herdar uma amostra antiga.
+            return (kept + PingSample(now, players.size, -1, -1, -1)).takeLast(40)
+        }
+        val median = if (valid.size % 2 == 1) {
+            valid[valid.size / 2]
+        } else {
+            (valid[valid.size / 2 - 1] + valid[valid.size / 2]) / 2
+        }
+        return (kept + PingSample(now, players.size, median, valid.first(), valid.last())).takeLast(40)
+    }
+
     private fun startProbePage(
         s: Session,
         port: Int,
@@ -610,6 +747,8 @@ object ServerController {
                 status = ServerStatus.ERROR,
                 error = message,
                 players = emptyList(),
+                avatars = emptyMap(),
+                pingHistory = emptyList(),
                 info = null,
                 startedAt = null,
             )
@@ -690,6 +829,12 @@ object ServerController {
         // Android bloqueia netlink: a lista de interfaces vem das APIs Java
         // (IfaceReporter) e e injetada no agente ICE do Pion.
         "-ifaces", IfaceReporter.path(context).absolutePath,
+        // Só abre com mundo importado e válido; o binário recusa o contrário.
+        "-require-world",
+        // RakNet é opcional e desligado por padrão (aba LAN do Minecraft).
+        "-raknet=${config.rakNet}",
+        // DEBUG só com "Diagnóstico avançado"; o padrão é INFO.
+        "-log-level", if (config.advancedDiagnostics) "debug" else "info",
     ) + tunnelArgs(config)
 
     /** Extra flags for the optional reverse tunnel (empty when not configured). */

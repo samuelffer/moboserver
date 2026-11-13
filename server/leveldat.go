@@ -9,9 +9,11 @@ package main
 //	nbt: unexpected named tag '.editorLevelMigrationVersion' with type 10 at
 //	offset ...: not present in struct to be decoded into
 //
-// para qualquer tag que a struct nao conheca. Versoes novas do jogo escrevem
-// tags extras ('.editorLevelMigrationVersion', 'editorWorldType', ...), entao o
-// mundo inteiro deixa de abrir por causa de um metadado irrelevante.
+// para qualquer tag que a struct nao conheca. O decodificador monta o campo como
+// ".<tag>" na raiz (tagName + "." + nestedTagName), por isso o ponto inicial na
+// mensagem nao faz parte do nome. Versoes novas do jogo escrevem tags extras
+// ('editorLevelMigrationVersion', 'editorWorldType', ...), entao o mundo inteiro
+// deixa de abrir por causa de um metadado irrelevante.
 //
 // A correcao nao remove a tag: ela e recortada do NBT por deslocamento de bytes
 // (preservando tipo e valor exatos), o level.dat original e guardado ao lado, e
@@ -318,17 +320,37 @@ func unknownTags(payload []byte) ([]string, error) {
 			return names, nil
 		}
 		var unexpected nbt.UnexpectedNamedTagError
-		if errors.As(err, &unexpected) && unexpected.TagName != "" && available[unexpected.TagName] && !drop[unexpected.TagName] {
-			// A top-level tag the engine cannot store, but that we can keep
-			// intact and put back when the world is saved.
-			drop[unexpected.TagName] = true
-			continue
+		if errors.As(err, &unexpected) {
+			if name := preservableTag(unexpected.TagName, available); name != "" && !drop[name] {
+				// A top-level tag the engine cannot store, but that we can keep
+				// intact and put back when the world is saved.
+				drop[name] = true
+				continue
+			}
 		}
 		// Anything else (type mismatch, corrupt NBT, unknown nested tag) is a
 		// real incompatibility: report it instead of dropping data silently.
 		return nil, err
 	}
 	return nil, errors.New("level.dat com metadados demais para recortar")
+}
+
+// preservableTag maps a name reported by the decoder to the top-level tag that
+// can be cut out and restored. The decoder builds the field path as
+// tagName + "." + nestedTagName, so a top-level tag arrives as ".<name>" and a
+// nested one as ".<parent>.<child>": in that case the whole parent compound is
+// preserved instead of dropping only the unknown child.
+func preservableTag(reported string, available map[string]bool) string {
+	name := strings.TrimPrefix(reported, ".")
+	if available[name] {
+		return name
+	}
+	for i := 1; i < len(name); i++ {
+		if name[i] == '.' && available[name[:i]] {
+			return name[:i]
+		}
+	}
+	return ""
 }
 
 // prepareLevelDat makes a level.dat readable by the engine without losing

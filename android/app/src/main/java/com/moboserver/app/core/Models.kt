@@ -1,5 +1,7 @@
 package com.moboserver.app.core
 
+import androidx.compose.ui.graphics.ImageBitmap
+
 /** Lifecycle of the embedded Minecraft server process. */
 enum class ServerStatus { STOPPED, STARTING, RUNNING, STOPPING, ERROR }
 
@@ -8,6 +10,42 @@ data class PlayerInfo(
     val name: String,
     val xuid: String = "",
     val device: String = "",
+    /** Endereço visto pelo servidor ("ip:porta"), usado só para o selo LAN. */
+    val addr: String = "",
+    /**
+     * Round-trip medido pelo transporte, em milissegundos. -1 significa que o
+     * transporte não expõe medição: a interface mostra "Sem medição" em vez de
+     * inventar um número.
+     */
+    val pingMs: Long = -1,
+    /** Transporte que forneceu a medição ("" quando o servidor não sabe). */
+    val transport: String = "",
+) {
+    /** Chave estável no app: XUID quando existe, nome caso contrário. */
+    val key: String get() = if (xuid.isNotBlank()) xuid else name.lowercase()
+}
+
+/**
+ * Miniatura da cabeça do jogador, montada pelo servidor a partir da skin da
+ * sessão. [image] fica nula quando a skin não pôde ser lida (Persona,
+ * geometria personalizada, textura inconsistente); [reason] explica o motivo.
+ */
+data class PlayerAvatar(
+    val hash: String,
+    val image: ImageBitmap?,
+    val layout: String = "",
+    val reason: String = "",
+) {
+    val available: Boolean get() = image != null
+}
+
+/** Uma amostra da latência dos jogadores, para a aba Conexão. */
+data class PingSample(
+    val at: Long,
+    val players: Int,
+    val median: Long,
+    val min: Long,
+    val max: Long,
 )
 
 /** One line of the server console. [level] is debug, info, warn or error. */
@@ -28,6 +66,9 @@ data class ServerInfo(
     val maxPlayers: Int,
     val authEnabled: Boolean = true,
     val lanTargets: List<LanTarget> = emptyList(),
+    /** Transportes que subiram de fato: "nethernet", "raknet". */
+    val transports: List<String> = emptyList(),
+    val signalingLatencyMs: Long = -1,
     val probePort: Int = 0,
     // Etapas da entrada por endereco, verificadas pelo processo Go.
     val raknetOk: Boolean = false,
@@ -76,4 +117,8 @@ data class RuntimeState(
     val exposure: Exposure = Exposure(),
     /** Name of the world the current/last session was started with. */
     val worldName: String? = null,
+    /** Miniaturas por jogador (chave = [PlayerInfo.key]). */
+    val avatars: Map<String, PlayerAvatar> = emptyMap(),
+    /** Latência agregada dos últimos 60 s, uma amostra a cada atualização. */
+    val pingHistory: List<PingSample> = emptyList(),
 )

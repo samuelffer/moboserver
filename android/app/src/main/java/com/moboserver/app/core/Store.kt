@@ -28,6 +28,19 @@ data class ServerConfig(
     val relayTls: Boolean = true,
     /** Aceita subir sem verificação de conta quando o login Xbox falha. */
     val allowOpenMode: Boolean = false,
+    /**
+     * Liga o transporte legado RakNet (UDP + descoberta na aba LAN). Fica
+     * desligado por padrão: a entrada por NetherNet é a que foi validada com o
+     * Minecraft 26.63 e a aba LAN é o único recurso que depende do RakNet.
+     */
+    val rakNet: Boolean = false,
+    /**
+     * "Diagnóstico avançado": libera as linhas DEBUG no console. Sem ele o
+     * console mostra INFO, avisos e erros apenas.
+     */
+    val advancedDiagnostics: Boolean = false,
+    /** Domínio próprio (ex.: casa.exemplo.com) que aponta para o endereço público. */
+    val externalHost: String = "",
 )
 
 /** Tiny key/value store shared by the UI, the service and the controller. */
@@ -72,6 +85,9 @@ object Store {
         put("relayToken", c.relayToken)
         put("relayTls", c.relayTls)
         put("allowOpenMode", c.allowOpenMode)
+        put("rakNet", c.rakNet)
+        put("advancedDiagnostics", c.advancedDiagnostics)
+        put("externalHost", c.externalHost)
     }.toString()
 
     private fun decode(raw: String?): ServerConfig {
@@ -96,6 +112,9 @@ object Store {
                 relayToken = o.optString("relayToken", defaults.relayToken).trim(),
                 relayTls = o.optBoolean("relayTls", defaults.relayTls),
                 allowOpenMode = o.optBoolean("allowOpenMode", defaults.allowOpenMode),
+                rakNet = o.optBoolean("rakNet", defaults.rakNet),
+                advancedDiagnostics = o.optBoolean("advancedDiagnostics", defaults.advancedDiagnostics),
+                externalHost = o.optString("externalHost", defaults.externalHost).trim(),
             )
         } catch (e: Exception) {
             defaults
