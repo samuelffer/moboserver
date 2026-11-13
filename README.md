@@ -60,9 +60,9 @@ processo nativo do próprio app:
 
 | Arquivo | Tamanho | SHA-256 |
 | --- | --- | --- |
-| [`releases_apk/MoboServer-v1.0.7-android-arm64.zip`](releases_apk/MoboServer-v1.0.7-android-arm64.zip) | 18,5 MB | `1cd31e8d779bf0e8b867f1a1e74f2d839acf231149d378ce68df0ec986b059fb` |
+| [`releases_apk/MoboServer-v1.0.8-android-arm64.zip`](releases_apk/MoboServer-v1.0.8-android-arm64.zip) | 18,5 MB | `9c06285632ca7f51f23628fe2e8ed4bea5f4339ba8b08aaba8c9d2f36e964e10` |
 
-O ZIP contém `MoboServer-v1.0.7.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
+O ZIP contém `MoboServer-v1.0.8.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
 (`apksigner verify` roda no CI) e as próximas versões instalam por cima desta.
 
 ## Instalação
@@ -71,7 +71,7 @@ Copie o APK do ZIP para o celular e abra o arquivo — o Android vai pedir permi
 instalar apps de fontes desconhecidas. Para conferir o download, compare o SHA-256 acima:
 
 ```bash
-sha256sum MoboServer-v1.0.7-android-arm64.zip
+sha256sum MoboServer-v1.0.8-android-arm64.zip
 ```
 
 ## Quem consegue entrar
