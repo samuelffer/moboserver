@@ -3,6 +3,7 @@ package tunnel
 import (
 	"bufio"
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net"
@@ -17,9 +18,9 @@ import (
 type Relay struct {
 	// Listen is the TCP address for control connections, e.g. ":9000".
 	Listen string
-	// Token is the shared secret a client must present. An empty token accepts
+	// Tokens are the shared secrets a client may present. An empty list accepts
 	// every client and is meant for tests on localhost only.
-	Token string
+	Tokens []string
 	// PortRange optionally restricts the public UDP ports handed out, so the
 	// host firewall can be opened for a fixed range (e.g. 19200-19300).
 	PortRange [2]int
@@ -75,6 +76,21 @@ func (r *Relay) ListenAndServe(ctx context.Context, ready func(control string)) 
 	}
 }
 
+// accepts compares the presented token against every configured one in
+// constant time.
+func (r *Relay) accepts(token string) bool {
+	if len(r.Tokens) == 0 {
+		return true
+	}
+	presented := []byte(token)
+	for _, allowed := range r.Tokens {
+		if subtle.ConstantTimeCompare([]byte(allowed), presented) == 1 {
+			return true
+		}
+	}
+	return false
+}
+
 // Addr returns the control address, useful in tests.
 func (r *Relay) Addr() string {
 	r.mu.Lock()
@@ -106,7 +122,7 @@ func (r *Relay) serve(ctx context.Context, conn net.Conn) {
 		return
 	}
 	token := strings.TrimSpace(strings.TrimPrefix(line, handshakePrefix))
-	if r.Token != "" && token != r.Token {
+	if !r.accepts(token) {
 		_, _ = conn.Write([]byte("ERR token\n"))
 		r.logf("relay: sessão rejeitada (token inválido) de %s", conn.RemoteAddr())
 		return

@@ -16,6 +16,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/df-mc/dragonfly/server/world/chunk"
+	"github.com/samuelffer/moboserver/server/internal/tunnel"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
@@ -129,6 +130,15 @@ func runSelftest(opts options, log *slog.Logger) int {
 		fmt.Fprintf(os.Stderr, "selftest: interface %s (%s) respondeu no ping\n", target.Iface, target.IP)
 	}
 
+	if opts.SelftestTunnel {
+		if err := checkTunnelDiscovery(ctx, opts.Port, opts.Name); err != nil {
+			fmt.Fprintln(os.Stderr, "selftest: tunel:", err)
+			cancel()
+			<-done
+			return 1
+		}
+	}
+
 	cancel()
 	if err := <-done; err != nil {
 		fmt.Fprintln(os.Stderr, "selftest: shutdown:", err)
@@ -233,5 +243,51 @@ func validatePong(motd string, port int, name string) error {
 	} else if got != port {
 		return fmt.Errorf("porta anunciada %d difere da real %d", got, port)
 	}
+	return nil
+}
+
+// checkTunnelDiscovery proves the whole external path in one shot: a relay is
+// started locally, the tunnel client connects to it exactly like the phone
+// does, and a RakNet discovery ping is sent to the *relay's* public UDP port.
+// If a pong comes back, datagrams reached the game server through the tunnel.
+func checkTunnelDiscovery(ctx context.Context, port int, name string) error {
+	relayCtx, relayCancel := context.WithCancel(ctx)
+	defer relayCancel()
+
+	relay := &tunnel.Relay{Listen: "127.0.0.1:0", Tokens: []string{"selftest"}}
+	ready := make(chan string, 1)
+	go func() { _ = relay.ListenAndServe(relayCtx, func(addr string) { ready <- addr }) }()
+
+	var control string
+	select {
+	case control = <-ready:
+	case <-time.After(5 * time.Second):
+		return fmt.Errorf("relay nao abriu o listener de controle")
+	}
+
+	client := &tunnel.Client{RelayAddr: control, Token: "selftest", LocalPort: port}
+	go client.Run(relayCtx)
+
+	var publicPort int
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if p := client.PublicPort(); p != 0 {
+			publicPort = p
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if publicPort == 0 {
+		return fmt.Errorf("o tunel nao estabeleceu sessao com o relay")
+	}
+
+	pong, err := pingServer(fmt.Sprintf("127.0.0.1:%d", publicPort), 10*time.Second)
+	if err != nil {
+		return fmt.Errorf("ping pelo tunel (porta publica %d): %w", publicPort, err)
+	}
+	if err := validatePong(pong, port, name); err != nil {
+		return fmt.Errorf("pong invalido pelo tunel: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "selftest: tunel ok, porta publica %d respondeu ao ping RakNet\n", publicPort)
 	return nil
 }

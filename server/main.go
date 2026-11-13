@@ -43,7 +43,11 @@ type options struct {
 	ViewDistance int
 	Gen          string
 	DNS          string
+	Tunnel       string
+	TunnelToken  string
+	TunnelTLS    bool
 	Selftest     bool
+	SelftestTunnel bool
 	ShowVersion  bool
 
 	// readyHook and ignoreStdin are only used by the self test, they are not
@@ -67,6 +71,10 @@ func parseFlags() options {
 	flag.IntVar(&o.ViewDistance, "view", 8, "maximum chunk radius (view distance) for players")
 	flag.StringVar(&o.Gen, "gen", "terrain", "world generator for new chunks: terrain or flat")
 	flag.StringVar(&o.DNS, "dns", "", "DNS servers for this network, comma separated (Android has no resolv.conf)")
+	flag.StringVar(&o.Tunnel, "tunnel", "", "relay host:port of the reverse UDP tunnel (empty disables it)")
+	flag.StringVar(&o.TunnelToken, "tunnel-token", "", "token accepted by the tunnel relay")
+	flag.BoolVar(&o.TunnelTLS, "tunnel-tls", true, "use TLS for the tunnel control connection")
+	flag.BoolVar(&o.SelftestTunnel, "selftest-tunnel", false, "in selftest, also cover the UDP tunnel end to end")
 	flag.BoolVar(&o.Selftest, "selftest", false, "start a throw-away server, ping it and exit")
 	flag.BoolVar(&o.ShowVersion, "version", false, "print version information and exit")
 	flag.Parse()
@@ -241,6 +249,10 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	// A descoberta na rede local nao precisa de nenhum anuncio extra: o proprio
 	// listener RakNet responde aos "Unconnected Ping" que os clientes Bedrock
 	// enviam em broadcast para a porta do jogo (ver server/lan.go).
+	if opts.Tunnel != "" {
+		startTunnel(ctx, opts)
+	}
+
 	emitLog("info", fmt.Sprintf("Descoberta na rede local: o servidor responde aos pings de busca do Minecraft "+
 		"na porta UDP %d (aba "Servidores" / LAN do jogo).", opts.Port))
 
