@@ -261,6 +261,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f "${{ steps.package.outputs.zip }}"
+          # Mantem o sha256 do README igual ao ZIP publicado; sem isso, um rebuild
+          # sem bump de versao deixa o hash documentado errado.
+          SHA="$(sha256sum "${{ steps.package.outputs.zip }}" | cut -d' ' -f1)"
+          if grep -q "releases_apk/${{ steps.package.outputs.name }}.zip" README.md; then
+            sed -i -E "s#(releases_apk/${{ steps.package.outputs.name }}\.zip\`]\\(releases_apk/${{ steps.package.outputs.name }}\.zip\\)[^|]*\| )\`[0-9a-f]{64}\`#\1\`${SHA}\`#" README.md
+            echo "sha256 do README: $SHA"
+          fi
+          git add -f README.md || true
+          git add -f dist/LEIA-ME.txt || true
           git add -f docs/test-evidence.txt || true
           git add -f server/go.sum 2>/dev/null || true
           if git diff --cached --quiet; then
