@@ -1,9 +1,9 @@
 MoboServer - evidencias automatizadas do ultimo build verde
-Commit: c15d3cb74ed6e9c0d7cd6b4421d53a7e59575921
-Data: 2026-11-13T23:43:30Z
+Commit: 20e268c4afcd32fca86578959666737c80f8fee2
+Data: 2026-11-13T23:48:53Z
 
-ok  	github.com/samuelffer/moboserver/server	0.096s
-ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.236s
+ok  	github.com/samuelffer/moboserver/server	0.119s
+ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.238s
 --- PASS: TestAvatarFaceCrop (0.00s)
 --- PASS: TestAvatarOuterLayerOverlay (0.00s)
 --- PASS: TestAvatarSemiTransparentOverlay (0.00s)
@@ -11,47 +11,61 @@ ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.236s
 --- PASS: TestAvatarDoubledLayout (0.00s)
 --- PASS: TestAvatarUnavailable (0.00s)
 --- PASS: TestAvatarHashChangesWithSkin (0.00s)
---- PASS: TestLevelDatAcceptsDottedTag (0.02s)
---- PASS: TestLevelDatAcceptsEditorTag (0.01s)
+--- PASS: TestLevelDatAcceptsDottedTag (0.00s)
+--- PASS: TestLevelDatAcceptsEditorTag (0.00s)
 --- PASS: TestLevelDatWithoutExtraTagsNeedsNoFix (0.00s)
---- PASS: TestValidateWorldCodes (0.02s)
+--- PASS: TestValidateWorldCodes (0.00s)
     --- PASS: TestValidateWorldCodes/arquivo_invalido (0.00s)
     --- PASS: TestValidateWorldCodes/level.dat_truncado (0.00s)
     --- PASS: TestValidateWorldCodes/importacao_incompleta (0.00s)
     --- PASS: TestValidateWorldCodes/db_vazio (0.00s)
-    --- PASS: TestValidateWorldCodes/mundo_valido_com_tag_extra (0.02s)
+    --- PASS: TestValidateWorldCodes/mundo_valido_com_tag_extra (0.00s)
 --- PASS: TestNbtSkipRejectsTruncated (0.00s)
-ok  	github.com/samuelffer/moboserver/server	0.145s
+ok  	github.com/samuelffer/moboserver/server	0.114s
 {"lvl":"info","msg":"Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em \u003c1 ms (nome \"MoboSelfTest\", protocolo 2225)","t":"log"}
-{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.222, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.222/20, eth0/fe80::7e1e:52ff:febb:7803/64)","t":"log"}
+{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.21, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.21/20, eth0/fe80::7eed:8dff:fe7b:22be/64)","t":"log"}
 selftest: surface block at spawn: block.Grass
 selftest: sinalizacao NetherNet ok em TCP 19132 (GET /v1/join 200, nome "MoboSelfTest", protocolo 2225)
-selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.222, 172.17.0.1)
+selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.21, 172.17.0.1)
 SELFTEST OK
 {"lvl":"info","msg":"Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em \u003c1 ms (nome \"MoboSelfTest\", protocolo 2225)","t":"log"}
-{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.222, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.222/20, eth0/fe80::7e1e:52ff:febb:7803/64)","t":"log"}
+{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.21, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.21/20, eth0/fe80::7eed:8dff:fe7b:22be/64)","t":"log"}
 selftest: surface block at spawn: block.Grass
 selftest: sinalizacao NetherNet ok em TCP 19555 (GET /v1/join 200, nome "MoboSelfTest", protocolo 2225)
-selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.222, 172.17.0.1)
+selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.21, 172.17.0.1)
 SELFTEST OK
 {"lvl":"info","msg":"Listener RakNet ativo: UDP :19134 (compatibilidade e descoberta na rede local)","t":"log"}
 {"lvl":"info","msg":"Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em \u003c1 ms (nome \"MoboSelfTest\", protocolo 2225)","t":"log"}
-{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.222, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.222/20, eth0/fe80::7e1e:52ff:febb:7803/64)","t":"log"}
+{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.21, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.21/20, eth0/fe80::7eed:8dff:fe7b:22be/64)","t":"log"}
 selftest: surface block at spawn: block.Grass
-selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;7986871486069309381;;Survival;1;19134;19134;0;0;
-selftest: interface eth0 (10.1.0.222) respondeu no ping
+selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;2804371865789378671;;Survival;1;19134;19134;0;0;
+selftest: interface eth0 (10.1.0.21) respondeu no ping
 selftest: sinalizacao NetherNet ok em TCP 19134 (GET /v1/join 200, nome "MoboSelfTest", protocolo 2225)
-selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.222, 172.17.0.1)
+selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.21, 172.17.0.1)
 SELFTEST OK
 {"lvl":"info","msg":"Listener RakNet ativo: UDP :19136 (compatibilidade e descoberta na rede local)","t":"log"}
 {"lvl":"info","msg":"Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em \u003c1 ms (nome \"MoboSelfTest\", protocolo 2225)","t":"log"}
-{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.222, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.222/20, eth0/fe80::7e1e:52ff:febb:7803/64)","t":"log"}
+{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.21, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.21/20, eth0/fe80::7eed:8dff:fe7b:22be/64)","t":"log"}
 selftest: surface block at spawn: block.Grass
-selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;1599653528072778542;;Survival;1;19136;19136;0;0;
-selftest: interface eth0 (10.1.0.222) respondeu no ping
+selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;6729563103594609977;;Survival;1;19136;19136;0;0;
+selftest: interface eth0 (10.1.0.21) respondeu no ping
 selftest: sinalizacao NetherNet ok em TCP 19136 (GET /v1/join 200, nome "MoboSelfTest", protocolo 2225)
-selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.222, 172.17.0.1)
-selftest: tunel ok, porta publica 58781 respondeu ao ping RakNet
+selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.21, 172.17.0.1)
+selftest: tunel ok, porta publica 60608 respondeu ao ping RakNet
 SELFTEST OK
 
 == Testes de JVM do app (selecao de mundo / mesclagem de configuracao) ==
+com.moboserver.app.core.WorldSelectionTest: 13 teste(s), 0 falha(s), 0 erro(s)
+  - selecao sobrevive a atualizacao de campo isolado
+  - pasta sem level_dat nem db e estrutura invalida
+  - id salvo sem pasta e um motivo diferente
+  - excluir o mundo selecionado limpa a selecao
+  - excluir A nao apaga a selecao de B
+  - servidor em execucao bloqueia troca de mundo
+  - db vazio tambem e estrutura invalida
+  - codigos do validador viram mensagens especificas
+  - salvar ajustes preserva o mundo selecionado
+  - id vazio vira nenhum mundo selecionado
+  - timeout do validador nao e mundo invalido
+  - mundo completo nao tem falha
+  - selecionar mundo nao mexe em outros campos
