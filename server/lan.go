@@ -17,7 +17,7 @@ import (
 const lanBroadcastAddr = "224.0.2.60:4445"
 
 // lanServerID identifies the announcement; clients only need it to be stable.
-const lanServerID = 13253860892328930865
+const lanServerID uint64 = 13253860892328930865
 
 // startLanAnnouncer advertises this server the same way a Bedrock world does
 // when it is opened to LAN. Phones, PCs and consoles that are on the same Wi-Fi
