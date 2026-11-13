@@ -33,7 +33,7 @@ processo nativo do próprio app:
 * **Segundo plano**: serviço em primeiro plano + wake lock + Wi-Fi lock, com notificação
   permanente mostrando jogadores e porta.
 
-## Recursos da versão 1.0.6
+## Recursos da versão 1.0.8
 
 | Recurso | Detalhe |
 | --- | --- |
@@ -46,7 +46,9 @@ processo nativo do próprio app:
 | Internet | Descoberta de IP público (STUN), liberação automática de porta (UPnP) e teste de acesso externo |
 | Rede local | Endereço Wi-Fi na tela inicial e **anúncio automático na aba LAN** (PC, celular e console na mesma rede) |
 | Otimização | Limite de memória do runtime Go conforme o heap do app, 1 worker de chunk, view distance limitada |
-| Diagnóstico | Teste do binário embutido, estado do aparelho e relatório de falhas com copiar/compartilhar |
+| Auto-teste de rede | Ao ligar, o servidor pinga a si mesmo em cada IP do aparelho e mostra na tela em quais endereços ele respondeu |
+| Página de teste no PC | Enquanto o servidor roda, uma página em `http://IP:8080` confirma em qualquer navegador se o celular está acessível na rede |
+| Diagnóstico | Teste do binário embutido, estado do aparelho, interfaces/rede e relatório completo (compartilhável) no console |
 
 ## Requisitos
 
@@ -58,9 +60,9 @@ processo nativo do próprio app:
 
 | Arquivo | Tamanho | SHA-256 |
 | --- | --- | --- |
-| [`releases_apk/MoboServer-v1.0.6-android-arm64.zip`](releases_apk/MoboServer-v1.0.6-android-arm64.zip) | 18,5 MB | `0b10673f9f44667bc11722eb7c061562e2d973c5bf878d2ff21a79ff2f2c179e` |
+| [`releases_apk/MoboServer-v1.0.7-android-arm64.zip`](releases_apk/MoboServer-v1.0.7-android-arm64.zip) | 18,5 MB | `1cd31e8d779bf0e8b867f1a1e74f2d839acf231149d378ce68df0ec986b059fb` |
 
-O ZIP contém `MoboServer-v1.0.6.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
+O ZIP contém `MoboServer-v1.0.7.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
 (`apksigner verify` roda no CI) e as próximas versões instalam por cima desta.
 
 ## Instalação
@@ -69,7 +71,7 @@ Copie o APK do ZIP para o celular e abra o arquivo — o Android vai pedir permi
 instalar apps de fontes desconhecidas. Para conferir o download, compare o SHA-256 acima:
 
 ```bash
-sha256sum MoboServer-v1.0.6-android-arm64.zip
+sha256sum MoboServer-v1.0.7-android-arm64.zip
 ```
 
 ## Quem consegue entrar
@@ -81,6 +83,27 @@ sha256sum MoboServer-v1.0.6-android-arm64.zip
 
 O servidor é Bedrock puro: **não** aceita Minecraft Java (PC Java), a não ser através de
 tradutores como o Geyser, que não vêm incluídos.
+
+## Ninguém consegue entrar? Faça o teste em 30 segundos
+
+O app agora responde sozinho a pergunta "o problema é o servidor ou a rede?".
+
+1. Ligue o servidor e olhe o cartão **Acesso pela internet** na tela inicial.
+   * **Auto-teste**: lista os endereços em que o servidor respondeu, visto de dentro do
+     celular (por exemplo `192.168.1.106`). Se estiver vazio ou "o celular não respondeu",
+     há VPN ou firewall do aparelho atrapalhando — desligue-os.
+   * **Teste no PC**: mostra `http://<ip-do-celular>:8080`. Abra esse endereço no navegador
+     de outro aparelho **na mesma rede**.
+     * A página abre → a rede local está liberada; use `IP:19132` no Minecraft.
+     * A página **não** abre → o roteador está isolando os aparelhos (isolamento de AP, rede
+       de visitantes, 2,4 GHz x 5 GHz com SSIDs separados, ou PC no cabo em outra rede).
+       Nenhum redirecionamento de porta resolve isso: coloque os dois aparelhos na mesma
+       rede ou desative o "isolamento de clientes/AP" no painel do roteador.
+2. Para o acesso **pela internet**, o cartão mostra o IP público e se a porta foi liberada.
+   Sem UPnP, copie a regra sugerida e cadastre no roteador: `UDP 19132 → 192.168.1.106`.
+3. Se nada funcionar, **Console → Diagnóstico**: o app monta um relatório com aparelho,
+   interfaces, IPs, gateway, IP público, estado do servidor e as últimas linhas do log, e
+   abre o compartilhamento do Android para você enviar.
 
 ## Uso
 
@@ -174,6 +197,25 @@ validação final é a primeira execução no seu celular. Se algo falhar, o con
 a mensagem de erro do servidor.
 
 ## Changelog
+
+### 1.0.8
+
+* **UPnP funcionando de verdade no Android 9+**: o app falava `http://` com o roteador, e o
+  Android bloqueia tráfego em texto claro por padrão — a descoberta terminava sem serviços e
+  a tela dizia "não encontrei um roteador com UPnP" mesmo em roteadores compatíveis. Agora o
+  manifesto permite esse tráfego (a conversa é só com o gateway da rede local) e a mensagem
+  mostra o motivo real da falha.
+* **Auto-teste de rede**: ao ficar online, o servidor faz um ping RakNet em cada IPv4 do
+  aparelho e emite o resultado para o app (tela inicial e log). Isso separa "o servidor não
+  está escutando" de "a rede não entrega o pacote" — a dúvida número 1 de quem não conecta.
+* **Página de teste no PC**: durante a sessão o app serve `http://<ip>:8080` com o estado do
+  servidor. Se o navegador de outro aparelho abre a página, a rede local está liberada.
+* **UPnP mais robusto**: o socket SSDP agora é preso à interface do Wi-Fi (em celular com
+  dados móveis + Wi-Fi o roteador não era encontrado), com 3 rodadas de `M-SEARCH` e fallback
+  no descritor do gateway (`:5000/rootDesc.xml`).
+* **Logs**: botão **Diagnóstico** no console compartilha aparelho, interfaces, IPs, gateway,
+  IP público, estado do servidor e as últimas 120 linhas do `server.log`.
+* O self-test do CI também valida o ping **pelo IP da interface** (não só pelo loopback).
 
 ### 1.0.6
 

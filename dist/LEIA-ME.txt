@@ -51,6 +51,21 @@ aparece na aba "LAN"/"Mundos", ou seja, com o console na MESMA rede Wi-Fi do
 celular. O MoboServer se anuncia sozinho nessa aba: ligue o servidor e abra o
 Minecraft no console.
 
+Se ninguem conseguir entrar
+----------------------------
+1. Ligue o servidor e olhe o cartao "Acesso pela internet".
+2. "Auto-teste" mostra os enderecos em que o servidor respondeu vistos de
+   dentro do celular. Se aparecer "o celular nao respondeu", desligue VPN e
+   apps de firewall do aparelho.
+3. "Teste no PC" mostra um endereco http://IP:8080. Abra no navegador de outro
+   aparelho na MESMA rede:
+   - a pagina abre: a rede local esta ok, use IP:19132 no Minecraft;
+   - a pagina nao abre: o roteador esta isolando os aparelhos (isolamento de
+     AP, rede de visitantes ou redes diferentes). Coloque os dois na mesma
+     rede Wi-Fi ou desative o isolamento no painel do roteador.
+4. Console > Diagnostico gera um relatorio completo (aparelho, interfaces,
+   IPs, gateway, log) e abre o compartilhamento do Android.
+
 Se o app fechar sozinho
 ------------------------
 Na proxima vez que abrir, o MoboServer mostra o relatorio da falha, com os

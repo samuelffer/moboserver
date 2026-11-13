@@ -28,6 +28,10 @@ data class UpnpResult(
 object Upnp {
     private const val TAG = "MoboServer-Upnp"
     private const val SSDP_ADDRESS = "239.255.255.250"
+
+    /** Reason the last discovery found nothing, shown in the UI. */
+    @Volatile
+    private var lastError: String? = null
     private const val SSDP_PORT = 1900
 
     fun forward(context: Context, port: Int, localIp: String): UpnpResult {
@@ -35,9 +39,11 @@ object Upnp {
         try {
             val services = discover(localIp, context)
             if (services.isEmpty()) {
+                val detail = lastError?.let { " ($it)" } ?: ""
                 return UpnpResult(
                     false,
-                    "Não encontrei um roteador com UPnP. Libere a porta $port/UDP manualmente nas configurações do roteador.",
+                    "Não encontrei um roteador com UPnP$detail. " +
+                        "Libere a porta $port/UDP manualmente nas configurações do roteador.",
                 )
             }
             for (service in services) {
@@ -73,6 +79,7 @@ object Upnp {
      * UPnP" used to show up on phones that do have it).
      */
     private fun discover(localIp: String?, context: Context): List<Service> {
+        lastError = null
         val locations = LinkedHashSet<String>()
         val socket = DatagramSocket(null)
         socket.use {
@@ -140,6 +147,10 @@ object Upnp {
                     break // socket timeout: no more answers
                 }
             }
+        }
+
+        if (locations.isEmpty()) {
+            lastError = "nenhuma resposta SSDP do roteador"
         }
 
         // Fallback: some routers ignore SSDP but serve the IGD description.
@@ -248,9 +259,16 @@ object Upnp {
             connection.connectTimeout = 3500
             connection.readTimeout = 3500
             connection.setRequestProperty("User-Agent", "Android/UPnP MoboServer")
-            if (connection.responseCode !in 200..299) return null
+            val code = connection.responseCode
+            if (code !in 200..299) {
+                lastError = "HTTP $code em $url"
+                return null
+            }
             connection.inputStream.bufferedReader().use { it.readText() }
         } catch (e: Exception) {
+            // Cleartext blocked, router refused the connection, wrong URL...
+            lastError = "${e.javaClass.simpleName}: ${e.message} ($url)"
+            Log.w(TAG, "httpGet $url: ${e.message}")
             null
         } finally {
             connection.disconnect()
