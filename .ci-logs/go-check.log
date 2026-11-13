@@ -1,12 +1,16 @@
 --- FAIL: TestAvatarFaceCrop (0.00s)
     avatar_test.go:71: canto deveria ser transparente, alfa=255
 --- FAIL: TestLevelDatAcceptsEditorTag (0.00s)
-    leveldat_test.go:96: prepareLevelDat: o level.dat deste mundo tem metadados que esta versão do motor não lê (nbt: unexpected named tag '..editorLevelMigrationVersion' with type TAG_Int at offset 2639: not present in struct to be decoded into). Abra e salve o mundo no Minecraft uma vez, ou importe um .mcworld exportado por ele
+    leveldat_test.go:79: DEBUG payload len=2876 rootEnd=2840 firstType=0xa lastSpan={Name:serverEditorConnectionPolicy Type:3 Start:2805 End:2840} inserted=031c002e656469746f724c6576656c4d6967726174696f6e56657273696f6e07000000
+    leveldat_test.go:79: DEBUG head=0a0000080f00626173654761 tail=637900000000031c002e656469746f724c6576656c4d6967726174696f6e56657273696f6e0700000000
+    leveldat_test.go:99: prepareLevelDat: o level.dat deste mundo tem metadados que esta versão do motor não lê (nbt: unexpected named tag '..editorLevelMigrationVersion' with type TAG_Int at offset 2639: not present in struct to be decoded into). Abra e salve o mundo no Minecraft uma vez, ou importe um .mcworld exportado por ele
 --- FAIL: TestValidateWorldCodes (0.00s)
     --- FAIL: TestValidateWorldCodes/mundo_valido_com_tag_extra (0.00s)
-        leveldat_test.go:271: esperava mundo válido, veio {OK:false Code:incompatible_metadata Detail:o level.dat deste mundo tem metadados que esta versão do motor não lê (nbt: unexpected named tag '..editorLevelMigrationVersion' with type TAG_Int at offset 2632: not present in struct to be decoded into). Abra e salve o mundo no Minecraft uma vez, ou importe um .mcworld exportado por ele LevelName: StorageVersion:10 FixedTags:[] DbFiles:3 WorldBytes:3}
+        leveldat_test.go:262: DEBUG payload len=2869 rootEnd=2833 firstType=0xa lastSpan={Name:serverEditorConnectionPolicy Type:3 Start:2798 End:2833} inserted=031c002e656469746f724c6576656c4d6967726174696f6e56657273696f6e03000000
+        leveldat_test.go:262: DEBUG head=0a0000080f00626173654761 tail=637900000000031c002e656469746f724c6576656c4d6967726174696f6e56657273696f6e0300000000
+        leveldat_test.go:274: esperava mundo válido, veio {OK:false Code:incompatible_metadata Detail:o level.dat deste mundo tem metadados que esta versão do motor não lê (nbt: unexpected named tag '..editorLevelMigrationVersion' with type TAG_Int at offset 2632: not present in struct to be decoded into). Abra e salve o mundo no Minecraft uma vez, ou importe um .mcworld exportado por ele LevelName: StorageVersion:10 FixedTags:[] DbFiles:3 WorldBytes:3}
 FAIL
-FAIL	github.com/samuelffer/moboserver/server	0.094s
+FAIL	github.com/samuelffer/moboserver/server	0.076s
 ?   	github.com/samuelffer/moboserver/server/cmd/relay	[no test files]
-ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.236s
+ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.233s
 FAIL
