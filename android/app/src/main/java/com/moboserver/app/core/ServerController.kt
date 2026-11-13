@@ -130,7 +130,7 @@ object ServerController {
         _state.value = _state.value.copy(status = ServerStatus.STOPPING)
         appendLog("info", "Desligando o servidor e salvando o mundo...")
 
-        val sent = process.send(command("stop"))
+        val sent = process.send(command("stop").toString())
         scope.launch {
             delay(2_000)
             if (!sent) process.destroy()
@@ -258,7 +258,7 @@ object ServerController {
             if (_state.value.status == ServerStatus.STARTING) {
                 fail(
                     "O servidor não terminou de iniciar. Verifique se o celular está conectado à internet " +
-                        "(necessário para validar o login do Xbox) e tentque novamente.",
+                        "(necessário para validar o login do Xbox) e tente novamente.",
                 )
                 process.destroy()
             }
