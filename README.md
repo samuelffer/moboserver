@@ -33,7 +33,7 @@ processo nativo do próprio app:
 * **Segundo plano**: serviço em primeiro plano + wake lock + Wi-Fi lock, com notificação
   permanente mostrando jogadores e porta.
 
-## Recursos da versão 1.0.2
+## Recursos da versão 1.0.3
 
 | Recurso | Detalhe |
 | --- | --- |
@@ -58,9 +58,9 @@ processo nativo do próprio app:
 
 | Arquivo | Tamanho | SHA-256 |
 | --- | --- | --- |
-| [`releases_apk/MoboServer-v1.0.2-android-arm64.zip`](releases_apk/MoboServer-v1.0.2-android-arm64.zip) | 18,5 MB | `4057c4821b07658cf69b022b043d13047c18466998f5ce2d3fae3f11d018642d` |
+| [`releases_apk/MoboServer-v1.0.3-android-arm64.zip`](releases_apk/MoboServer-v1.0.3-android-arm64.zip) | 18,5 MB | `3311132e1332bd1f335f98ae899b868c91f310b4d4de58cd039314602520a242` |
 
-O ZIP contém `MoboServer-v1.0.2.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
+O ZIP contém `MoboServer-v1.0.3.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
 (`apksigner verify` roda no CI) e as próximas versões instalam por cima desta.
 
 ## Instalação
@@ -69,7 +69,7 @@ Copie o APK do ZIP para o celular e abra o arquivo — o Android vai pedir permi
 instalar apps de fontes desconhecidas. Para conferir o download, compare o SHA-256 acima:
 
 ```bash
-sha256sum MoboServer-v1.0.2-android-arm64.zip
+sha256sum MoboServer-v1.0.3-android-arm64.zip
 ```
 
 ## Quem consegue entrar
@@ -124,6 +124,9 @@ exposição:
 
 Pré-requisitos: Go 1.26+, JDK 17, Android SDK 35.
 
+> O binário arm64 precisa de um passo extra (`scripts/patch-interp.py`) para apontar o
+> interpretador ELF para `/system/bin/linker64`; o `make server-arm64` já faz isso.
+
 ```bash
 # 1. Servidor embutido (também roda o self-test)
 cd server
@@ -170,6 +173,14 @@ validação final é a primeira execução no seu celular. Se algo falhar, o con
 a mensagem de erro do servidor.
 
 ## Changelog
+
+### 1.0.3
+
+* **Correção do "Cannot run program ... error=2"**: o binário do servidor era um PIE compilado
+  para Linux, que aponta para `/lib/ld-linux-aarch64.so.1` (loader do glibc) — esse arquivo não
+  existe no Android, então o `execve` falhava com ENOENT mesmo com o binário presente. Agora o
+  `PT_INTERP` é reescrito para `/system/bin/linker64` e o CI valida o ELF antes de empacotar.
+* Mensagem de erro de execução mais clara, apontando o Diagnóstico.
 
 ### 1.0.2
 
