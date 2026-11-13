@@ -252,7 +252,8 @@ private fun TransportsCard(state: RuntimeState) {
         InfoLine("NetherNet", if (transports.contains("nethernet")) "ligado" else "desligado")
         InfoLine("RakNet", if (transports.contains("raknet")) "ligado (aba LAN)" else "desligado")
         if (info.signalingLatencyMs >= 0) {
-            InfoLine("GET /v1/join", "${info.signalingLatencyMs} ms")
+            val ms = info.signalingLatencyMs
+            InfoLine("GET /v1/join", if (ms == 0L) "<1 ms" else "$ms ms")
         }
         Text(
             "O protocolo não informa por qual transporte cada jogador entrou: a origem mostrada " +

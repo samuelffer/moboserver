@@ -176,7 +176,13 @@ class ServerProcess(
                         iceInterfaceCount = interfaces.size,
                         iceError = ice?.optString("error").orEmpty(),
                         transports = readStrings(obj.optJSONArray("transports")),
-                        signalingLatencyMs = signaling?.optLong("latencyMs") ?: -1L,
+                        // Ausente = sem medição (o campo é omitido quando o
+                        // servidor não respondeu); 0 significa "<1 ms".
+                        signalingLatencyMs = if (signaling?.has("latencyMs") == true) {
+                            signaling.optLong("latencyMs")
+                        } else {
+                            -1L
+                        },
                     ),
                 )
             }

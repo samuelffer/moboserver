@@ -47,6 +47,8 @@ object ServerController {
         var stopJob: Job? = null
         /** Sessão informada pelo servidor nos eventos de avatar. */
         var avatarSession: Long = 0L
+        /** Quando o processo começou a subir, para medir o tempo até o status. */
+        var startedAtMs: Long = 0L
     }
 
     private var appContext: Context? = null
@@ -184,6 +186,7 @@ object ServerController {
             listener = { event -> onEvent(s, event) },
         )
         s.process = process
+        s.startedAtMs = System.currentTimeMillis()
         try {
             process.start()
             IfaceReporter.startWatching(context) { process.isAlive }
@@ -495,7 +498,20 @@ object ServerController {
                         error = null,
                     )
                 }
-                appendLog("info", "Servidor iniciado no celular • Minecraft Bedrock ${event.version} • porta ${event.port}")
+                val elapsedSeconds = if (s.startedAtMs > 0) {
+                    ((System.currentTimeMillis() - s.startedAtMs) / 1000.0)
+                } else {
+                    -1.0
+                }
+                appendLog(
+                    "info",
+                    "Servidor iniciado no celular • Minecraft Bedrock ${event.version} • porta ${event.port}" +
+                        if (elapsedSeconds >= 0) {
+                            " • status publicado em ${String.format(Locale.getDefault(), "%.1f", elapsedSeconds)} s"
+                        } else {
+                            ""
+                        },
+                )
                 appendLog(
                     if (event.signalingOk) "info" else "error",
                     if (event.signalingOk) {

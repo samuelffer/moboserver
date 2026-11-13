@@ -414,8 +414,8 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	if opts.NetherNet {
 		signalling, signErr = waitForSignaling(opts.Port, 12*time.Second)
 		if signErr == nil {
-			emitLog("info", fmt.Sprintf("Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em %d ms "+
-				"(nome %q, protocolo %d)", signalling.LatencyMS, signalling.Name, signalling.Protocol))
+			emitLog("info", fmt.Sprintf("Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em %s "+
+				"(nome %q, protocolo %d)", latencyText(signalling.LatencyMS), signalling.Name, signalling.Protocol))
 			emitLog("info", fmt.Sprintf("Nome que o cliente recebe ao digitar o endereco: %q", signalling.Name))
 		} else {
 			emitLog("error", "Sinalizacao NetherNet falhou: "+signErr.Error())

@@ -166,6 +166,16 @@ func waitForSignaling(port int, timeout time.Duration) (signallingInfo, error) {
 	return info, fmt.Errorf("sinalizacao NetherNet em %s nao ok: %w", url, lastErr)
 }
 
+// latencyText formats a measured round trip without claiming a precision the
+// clock does not have: on loopback the request often finishes in less than a
+// millisecond.
+func latencyText(ms int64) string {
+	if ms <= 0 {
+		return "<1 ms"
+	}
+	return fmt.Sprintf("%d ms", ms)
+}
+
 // probeSignaling checks the NetherNet signaling endpoint on every local address.
 // It is used instead of the RakNet ping when the legacy transport is off, so the
 // self test never reports "no answer" for a transport that is not running.

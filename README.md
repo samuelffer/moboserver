@@ -75,7 +75,7 @@ processo nativo do próprio app:
 
 | Arquivo | Tamanho | SHA-256 |
 | --- | --- | --- |
-| [`releases_apk/MoboServer-v1.4.0-android-arm64.zip`](releases_apk/MoboServer-v1.4.0-android-arm64.zip) | a confirmar | `c817f6c267c7733097d2af6a131ef699af75caa2bed0701634fd73c7006f5380` |
+| [`releases_apk/MoboServer-v1.4.0-android-arm64.zip`](releases_apk/MoboServer-v1.4.0-android-arm64.zip) | 18,8 MB | `c817f6c267c7733097d2af6a131ef699af75caa2bed0701634fd73c7006f5380` |
 
 O ZIP contém `MoboServer-v1.4.0.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
 (`apksigner verify` roda no CI) e as próximas versões instalam por cima desta.
