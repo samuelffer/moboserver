@@ -49,7 +49,11 @@ jobs:
           /tmp/mobosrv -version
           # O self-test sobe um servidor real, carrega um mundo gerado, faz um
           # ping RakNet e desliga. Falha o build se qualquer parte quebrar.
-          /tmp/mobosrv -selftest
+          # Descoberta LAN: o payload do "Unconnected Pong" (o que o cliente
+          # Bedrock le na aba LAN) e validado campo a campo, tanto na porta
+          # padrao quanto em uma porta personalizada.
+          /tmp/mobosrv -selftest -port 19132
+          /tmp/mobosrv -selftest -port 19555
 
       - name: "Servidor: compilar para Android arm64"
         working-directory: server

@@ -24,7 +24,7 @@ import (
 
 // appVersion is the version of the embedded server, kept in sync with the
 // Android app version by the build workflow.
-const appVersion = "1.0.8"
+const appVersion = "1.0.9"
 
 // options holds every command line flag the Android app passes to the server
 // process. Everything is explicit: the process never reads a config file, so
@@ -42,7 +42,6 @@ type options struct {
 	Difficulty   string
 	ViewDistance int
 	Gen          string
-	Lan          bool
 	DNS          string
 	Selftest     bool
 	ShowVersion  bool
@@ -67,7 +66,6 @@ func parseFlags() options {
 	flag.StringVar(&o.Difficulty, "difficulty", "normal", "difficulty: peaceful, easy, normal or hard")
 	flag.IntVar(&o.ViewDistance, "view", 8, "maximum chunk radius (view distance) for players")
 	flag.StringVar(&o.Gen, "gen", "terrain", "world generator for new chunks: terrain or flat")
-	flag.BoolVar(&o.Lan, "lan", true, "announce the server on the local network (LAN tab)")
 	flag.StringVar(&o.DNS, "dns", "", "DNS servers for this network, comma separated (Android has no resolv.conf)")
 	flag.BoolVar(&o.Selftest, "selftest", false, "start a throw-away server, ping it and exit")
 	flag.BoolVar(&o.ShowVersion, "version", false, "print version information and exit")
@@ -240,9 +238,11 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 		opts.readyHook(srv)
 	}
 
-	if opts.Lan {
-		startLanAnnouncer(ctx, srv, opts)
-	}
+	// A descoberta na rede local nao precisa de nenhum anuncio extra: o proprio
+	// listener RakNet responde aos "Unconnected Ping" que os clientes Bedrock
+	// enviam em broadcast para a porta do jogo (ver server/lan.go).
+	emitLog("info", fmt.Sprintf("Descoberta na rede local: o servidor responde aos pings de busca do Minecraft "+
+		"na porta UDP %d (aba "Servidores" / LAN do jogo).", opts.Port))
 
 	// Auto teste: o servidor pinga a si mesmo em cada IPv4 do aparelho. Isso
 	// separa "o servidor nao esta escutando" de "a rede nao entrega o pacote",
@@ -253,8 +253,8 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 			if target.OK {
 				emitLog("info", fmt.Sprintf("Servidor responde em %s:%d (%s)", target.IP, opts.Port, target.Iface))
 			} else {
-				emitLog("warn", fmt.Sprintf("Servidor NAO respondeu em %s:%d (%s). "+
-					"Verifique VPN, firewall do aparelho ou isolamento de rede no roteador.",
+				emitLog("warn", fmt.Sprintf("Servidor nao respondeu em %s:%d (%s) a partir do proprio aparelho. "+
+					"Possiveis causas: VPN ativa, regra de firewall do sistema ou interface sem rota.",
 					target.IP, opts.Port, target.Iface))
 			}
 		}

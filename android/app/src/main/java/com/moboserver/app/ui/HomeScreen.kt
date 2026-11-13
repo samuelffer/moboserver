@@ -51,6 +51,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.moboserver.app.R
+import com.moboserver.app.core.Exposure
+import com.moboserver.app.core.Net
 import com.moboserver.app.core.PlayerInfo
 import com.moboserver.app.core.RuntimeState
 import com.moboserver.app.core.ServerConfig
@@ -244,17 +246,9 @@ private fun StatusCard(
     val running = state.status == ServerStatus.RUNNING
     val starting = state.status == ServerStatus.STARTING
     val stopping = state.status == ServerStatus.STOPPING
-    val primaryAddress = when {
-        !running && state.status != ServerStatus.STOPPING -> "desligado"
-        publicIp != null && upnpOk -> "$publicIp:$port"
-        !lanIp.isNullOrBlank() -> "$lanIp:$port"
-        else -> "aguardando rede..."
-    }
-    val primaryLabel = if (running && publicIp != null && upnpOk) {
-        "Endereço pela internet"
-    } else {
-        "Endereço na rede Wi-Fi"
-    }
+    val addressIp = lanIp ?: publicIp
+    val version = state.info?.mcVersion
+    val protocol = state.info?.protocol
 
     Box(
         modifier = Modifier
@@ -288,32 +282,64 @@ private fun StatusCard(
                 }
             }
 
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "Mundo: ${state.worldName ?: "nenhum selecionado"}",
+                color = MoboColors.TextSecondary,
+                fontSize = 12.sp,
+            )
+
             Spacer(Modifier.height(16.dp))
-            Text(primaryLabel, color = MoboColors.TextSecondary, fontSize = 12.sp)
-            Spacer(Modifier.height(2.dp))
+            Text("Mesma rede (Wi-Fi, LAN)", color = MoboColors.TextSecondary, fontSize = 12.sp)
+            Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = primaryAddress,
+                    text = addressIp ?: "sem Wi-Fi",
                     color = MoboColors.Lime,
-                    fontSize = 22.sp,
+                    fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                 )
-                if (running) {
-                    IconButton(onClick = { onCopy(primaryAddress) }) {
+                if (addressIp != null) {
+                    IconButton(onClick = { onCopy(addressIp) }) {
                         Icon(
                             imageVector = Icons.Filled.ContentCopy,
-                            contentDescription = "Copiar endereço",
+                            contentDescription = "Copiar IP",
                             tint = MoboColors.TextSecondary,
                             modifier = Modifier.size(18.dp),
                         )
                     }
                 }
             }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Porta", color = MoboColors.TextSecondary, fontSize = 12.sp)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = port.toString(),
+                    color = MoboColors.TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = FontFamily.Monospace,
+                )
+                IconButton(onClick = { onCopy(port.toString()) }) {
+                    Icon(
+                        imageVector = Icons.Filled.ContentCopy,
+                        contentDescription = "Copiar porta",
+                        tint = MoboColors.TextSecondary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                BadgePill(if (running) "Bedrock ${state.info?.mcVersion ?: ""}" else "Bedrock")
+                BadgePill(
+                    when {
+                        version == null -> "Bedrock"
+                        protocol == null -> "Bedrock $version"
+                        else -> "Bedrock $version • protocolo $protocol"
+                    },
+                )
                 BadgePill("${state.players.size}/$maxPlayers jogadores")
                 BadgePill("UDP $port")
             }
@@ -479,121 +505,76 @@ private fun ExposureCard(
         Spacer(Modifier.height(8.dp))
         if (!running) {
             Text(
-                "Ligue o servidor para descobrir o endereço público.",
+                "Ligue o servidor para descobrir o endereço público e testar o acesso de fora.",
                 color = MoboColors.TextSecondary,
                 fontSize = 13.sp,
             )
             return@MoboCard
         }
 
+        val situation = when (exposure.externalVerified) {
+            true -> "confirmado por um verificador externo" to MoboColors.Lime
+            false -> "não confirmado no último teste" to MoboColors.Warning
+            else -> "ainda não verificado" to MoboColors.TextSecondary
+        }
+        InfoLine(label = "Acesso externo", value = situation.first, valueColor = situation.second)
         InfoLine(
-            label = "Rede Wi-Fi",
-            value = exposure.lanIp?.let { "$it:$port" } ?: "sem Wi-Fi (dados móveis)",
+            label = "IP observado",
+            value = exposure.publicIp?.let { "$it:$port" } ?: "ainda não descoberto",
             mono = true,
         )
-        val reachable = state.info?.lanTargets.orEmpty().filter { it.ok }.map { it.ip }
-        InfoLine(
-            label = "Auto-teste",
-            value = when {
-                state.info?.lanTargets.isNullOrEmpty() -> "verificando..."
-                reachable.isEmpty() -> "o celular não respondeu"
-                else -> reachable.joinToString(", ")
-            },
-            mono = true,
-            valueColor = if (reachable.isEmpty()) MoboColors.Warning else MoboColors.Lime,
-        )
-        val probePort = state.info?.probePort ?: 0
-        if (probePort > 0 && exposure.lanIp != null) {
-            InfoLine(
-                label = "Teste no PC",
-                value = "http://${exposure.lanIp}:$probePort",
-                mono = true,
-            )
+        if (exposure.wanIp != null && exposure.wanIp != exposure.publicIp) {
+            InfoLine(label = "Roteador diz", value = exposure.wanIp, mono = true)
         }
         InfoLine(
-            label = "IP público",
-            value = exposure.publicIp?.let { "$it:$port" } ?: "verificando...",
-            mono = true,
-        )
-        InfoLine(
-            label = "Roteador",
+            label = "Regra no roteador",
             value = when {
-                exposure.upnpOk -> "porta liberada (UPnP)"
-                exposure.upnpMessage != null -> "sem liberação automática"
-                else -> "não verificado"
+                exposure.upnpOk -> "aceita via UPnP (não garante acesso)"
+                exposure.upnpMessage != null -> "não configurada"
+                else -> "não verificada"
             },
-            valueColor = if (exposure.upnpOk) MoboColors.Lime else MoboColors.Warning,
+            valueColor = when {
+                exposure.upnpOk -> MoboColors.Lime
+                exposure.upnpMessage != null -> MoboColors.Warning
+                else -> MoboColors.TextSecondary
+            },
         )
 
-        if (exposure.upnpMessage != null) {
+        exposure.upnpMessage?.let { message ->
             Spacer(Modifier.height(4.dp))
-            Text(
-                text = exposure.upnpMessage,
-                color = MoboColors.TextSecondary,
-                fontSize = 12.sp,
-            )
+            Text(message, color = MoboColors.TextSecondary, fontSize = 12.sp)
         }
-        if (exposure.externalCheck != null) {
+        exposure.externalCheck?.let { check ->
             Spacer(Modifier.height(6.dp))
-            Text(text = exposure.externalCheck, color = MoboColors.Info, fontSize = 12.sp)
+            Text(check, color = MoboColors.Info, fontSize = 12.sp)
         }
-        if (running && !exposure.working && exposure.lanIp == null) {
+
+        val hypotheses = natHypotheses(exposure)
+        if (hypotheses.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
-            Text(
-                "O celular está sem Wi-Fi. Na mesma rede (LAN) só funciona com Wi-Fi ligado; " +
-                    "por dados móveis geralmente não dá para receber conexões de fora. " +
-                    "Ligue o Wi-Fi para jogar com quem está perto de você.",
-                color = MoboColors.Warning,
-                fontSize = 12.sp,
-            )
+            hypotheses.forEach { note ->
+                Text("• $note", color = MoboColors.TextSecondary, fontSize = 12.sp)
+            }
         }
-        if (running && reachable.isEmpty() && !state.info?.lanTargets.isNullOrEmpty()) {
+
+        if (!exposure.upnpOk && exposure.upnpMessage != null && exposure.lanIp != null) {
             Spacer(Modifier.height(10.dp))
             Text(
-                "O servidor não respondeu em nenhum endereço local: desative VPN/apps de firewall " +
-                    "do celular e tente de novo.",
-                color = MoboColors.Warning,
-                fontSize = 12.sp,
-            )
-        }
-        if (running && reachable.isNotEmpty() && probePort > 0) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "Se o PC não abre a página de teste acima, o roteador está isolando os aparelhos " +
-                    "(isolamento de AP ou redes diferentes). Se abre mas o Minecraft não conecta, " +
-                    "use o endereço mostrado em \"Rede Wi-Fi\".",
-                color = MoboColors.TextSecondary,
-                fontSize = 12.sp,
-            )
-        }
-        if (exposure.carrierGradeNat) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "Seu provedor usa CGNAT (IP 100.64.x.x compartilhado). Mesmo liberando a porta, " +
-                    "ninguém de fora consegue entrar. Alternativas gratuitas: Tailscale ou ZeroTier " +
-                    "instalados no celular e no PC de quem vai jogar, ou pedir IP público ao provedor.",
-                color = MoboColors.Danger,
-                fontSize = 12.sp,
-            )
-        } else if (!exposure.upnpOk && exposure.upnpMessage != null && exposure.lanIp != null) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "Sem UPnP: libere a porta no roteador (manual)",
+                "Sem liberação automática: cadastre a regra no roteador",
                 color = MoboColors.Warning,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "1. Abra o painel do roteador no navegador (em geral 192.168.0.1).\n" +
+                "1. Abra o painel do roteador no navegador (em geral o endereço do gateway).\n" +
                     "2. Procure \"Port forwarding\" / \"Redirecionamento de portas\".\n" +
-                    "3. Regra nova: protocolo UDP, porta externa e interna ${port}, " +
+                    "3. Regra nova: protocolo UDP, porta externa e interna $port, " +
                     "IP de destino ${exposure.lanIp}.\n" +
                     "4. Salve e use \"Testar acesso\".",
                 color = MoboColors.TextSecondary,
                 fontSize = 12.sp,
             )
-            Spacer(Modifier.height(2.dp))
             TextButton(onClick = { onCopy("UDP $port -> ${exposure.lanIp}") }) {
                 Icon(
                     Icons.Filled.ContentCopy,
@@ -614,7 +595,7 @@ private fun ExposureCard(
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.weight(1f),
             ) {
-                Text("Liberar porta", fontSize = 12.sp)
+                Text("Liberar no roteador", fontSize = 12.sp)
             }
             OutlinedButton(
                 onClick = onCheck,
@@ -637,9 +618,9 @@ private fun ExposureCard(
                 Text("Trabalhando...", color = MoboColors.TextSecondary, fontSize = 12.sp)
             }
         }
-        if (exposure.publicIp != null) {
-            Spacer(Modifier.height(10.dp))
-            TextButton(onClick = { onCopy("${exposure.publicIp}:$port") }) {
+        val public = exposure.publicIp
+        if (public != null) {
+            TextButton(onClick = { onCopy("$public:$port") }) {
                 Icon(
                     Icons.Filled.ContentCopy,
                     contentDescription = null,
@@ -653,16 +634,36 @@ private fun ExposureCard(
     }
 }
 
+/**
+ * Observations about the network path. They are hypotheses, not verdicts: the
+ * app cannot read the router's NAT table nor the carrier's configuration.
+ */
+private fun natHypotheses(exposure: Exposure): List<String> {
+    val notes = ArrayList<String>()
+    val public = exposure.publicIp
+    if (public != null) {
+        if (Net.isPrivateIp(public)) {
+            notes.add("O endereço visto de fora é privado, então existe NAT antes do seu roteador.")
+        } else if (Net.isCarrierGradeNat(public)) {
+            notes.add("O endereço visto de fora está em 100.64/10, indício de CGNAT do provedor.")
+        }
+    }
+    if (exposure.wanIp != null && public != null && exposure.wanIp != public) {
+        notes.add("O roteador informa ${exposure.wanIp} e o STUN vê $public: provável NAT duplo.")
+    }
+    return notes
+}
+
 @Composable
 private fun HowToCard(port: Int, lanIp: String?, publicIp: String?, running: Boolean) {
     MoboCard {
         SectionTitle("Como seus amigos entram")
         Spacer(Modifier.height(8.dp))
-        Step(1, "Abra o Minecraft Bedrock e vá em Jogar → Servidores → Adicionar servidor.")
-        Step(2, "Endereço: ${publicIp ?: lanIp ?: "IP do celular"}")
-        Step(3, "Porta: $port")
-        Step(4, "Se estiverem na mesma rede Wi-Fi, use o endereço local. Fora dela, use o IP público com a porta liberada.")
-        Step(5, "Xbox, PlayStation e Switch não digitam endereço: eles entram pela aba LAN, com o console no mesmo Wi-Fi do celular.")
+        Step(1, "O cliente precisa ser Minecraft Bedrock (Windows 10/11, celular ou console). O Minecraft Java não conecta em servidor Bedrock.")
+        Step(2, "Jogar → Servidores → Adicionar servidor.")
+        Step(3, "Endereço: ${lanIp ?: publicIp ?: "IP do celular"}   •   Porta: $port")
+        Step(4, "Na mesma rede Wi-Fi use o IP local. Fora dela, o acesso depende do roteador ou de um túnel (área acima).")
+        Step(5, "Xbox, PlayStation e Switch não digitam endereço: eles aparecem sozinhos na aba LAN quando estão no mesmo Wi-Fi.")
         if (!running) {
             Spacer(Modifier.height(6.dp))
             Text(

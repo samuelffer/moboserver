@@ -17,6 +17,7 @@ import (
 	"github.com/df-mc/dragonfly/server/player/chat"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/google/uuid"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/login"
 )
 
@@ -329,12 +330,62 @@ func (b *banList) persistLocked() error {
 	return os.Rename(tmp, b.path)
 }
 
+// deviceOSName maps the numeric device id sent by the client to something the
+// player recognises. The client picks this value itself, so it is informational
+// only — never used to make security decisions.
+func deviceOSName(os protocol.DeviceOS) string {
+	switch os {
+	case 1:
+		return "Android"
+	case 2:
+		return "iOS"
+	case 3:
+		return "macOS"
+	case 4:
+		return "Fire OS"
+	case 7:
+		return "Windows 10/11"
+	case 8:
+		return "Windows (Win32)"
+	case 10:
+		return "Apple TV"
+	case 11:
+		return "PlayStation"
+	case 12:
+		return "Nintendo Switch"
+	case 13:
+		return "Xbox"
+	case 15:
+		return "Linux"
+	default:
+		return fmt.Sprintf("dispositivo %d", int(os))
+	}
+}
+
 // banAllower rejects connections of banned XUIDs before they spawn.
 type banAllower struct {
 	bans *banList
 }
 
-func (a *banAllower) Allow(_ net.Addr, d login.IdentityData, _ login.ClientData) (string, bool) {
+func (a *banAllower) Allow(addr net.Addr, d login.IdentityData, c login.ClientData) (string, bool) {
+	// Logging here is the first point where the game (not just RakNet) is
+	// talking to us, so it proves the whole path works: DNS, NAT/firewall and
+	// the login handshake. It is also where the client reports its version.
+	where := "endereco desconhecido"
+	if addr != nil {
+		where = addr.String()
+	}
+	client := strings.TrimSpace(c.GameVersion)
+	if client == "" {
+		client = "nao informado"
+	}
+	device := strings.TrimSpace(c.DeviceModel)
+	if device == "" {
+		device = deviceOSName(c.DeviceOS)
+	}
+	emitLog("info", fmt.Sprintf("Conexao recebida de %s • cliente Minecraft %s (%s) • servidor fala %s, protocolo %d",
+		where, client, device, protocol.CurrentVersion, protocol.CurrentProtocol))
+
 	if a.bans != nil && a.bans.contains(d.XUID) {
 		return "§cVocê foi banido deste servidor.", false
 	}

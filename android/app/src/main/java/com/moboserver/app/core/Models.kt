@@ -31,16 +31,25 @@ data class ServerInfo(
     val probePort: Int = 0,
 )
 
-/** State of the "can my friends reach this?" checks. */
+/**
+ * State of the "can my friends reach this?" checks.
+ *
+ * The two addresses are kept apart on purpose: [wanIp] is what the router
+ * reports about itself (UPnP), [publicIp] is what an outside server observes
+ * through STUN. They disagree when there is another NAT in front of the router.
+ * [upnpOk] only means "the router accepted the rule"; it says nothing about
+ * whether traffic actually arrives, which is [externalVerified].
+ */
 data class Exposure(
     val lanIp: String? = null,
+    val wanIp: String? = null,
     val publicIp: String? = null,
     val upnpMessage: String? = null,
     val upnpOk: Boolean = false,
     val working: Boolean = false,
     val externalCheck: String? = null,
-    /** Provedor usa CGNAT: nem redirecionar a porta resolve. */
-    val carrierGradeNat: Boolean = false,
+    /** null = never checked, true = reached from outside, false = not reached. */
+    val externalVerified: Boolean? = null,
 )
 
 /** Everything the UI renders, published by [ServerController]. */
@@ -52,4 +61,6 @@ data class RuntimeState(
     val error: String? = null,
     val startedAt: Long? = null,
     val exposure: Exposure = Exposure(),
+    /** Name of the world the current/last session was started with. */
+    val worldName: String? = null,
 )

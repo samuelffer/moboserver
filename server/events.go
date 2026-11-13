@@ -44,7 +44,11 @@ func emitLog(level, msg string) {
 // Android app as structured events.
 type eventHandler struct{}
 
-func (eventHandler) Enabled(_ context.Context, l slog.Level) bool { return l >= slog.LevelInfo }
+// Enabled keeps every record, including debug: the network layer of go-raknet
+// reports read/handshake errors only at debug level, and those records carry
+// the remote address, which is the only evidence available when a client
+// cannot reach the server.
+func (eventHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
 
 func (eventHandler) Handle(_ context.Context, r slog.Record) error {
 	msg := r.Message

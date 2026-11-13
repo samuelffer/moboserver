@@ -55,6 +55,15 @@ object Net {
         null
     }
 
+    /** RFC 1918 + 100.64/10: addresses that cannot be reached from the internet. */
+    fun isPrivateIp(ip: String): Boolean {
+        val parts = ip.split('.')
+        if (parts.size != 4) return false
+        val a = parts[0].toIntOrNull() ?: return false
+        val b = parts[1].toIntOrNull() ?: return false
+        return a == 10 || (a == 172 && b in 16..31) || (a == 192 && b == 168) || isCarrierGradeNat(ip)
+    }
+
     /** 100.64.0.0/10 — shared address space used by CGNAT and some hotspots. */
     fun isCarrierGradeNat(ip: String): Boolean {
         val parts = ip.split('.')

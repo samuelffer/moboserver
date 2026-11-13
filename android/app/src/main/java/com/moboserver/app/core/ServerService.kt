@@ -38,7 +38,7 @@ class ServerService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var multicastLock: WifiManager.MulticastLock? = null
-    private var finishing = false
+    private var finishJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -52,6 +52,10 @@ class ServerService : Service() {
             ServerController.stop()
             return START_NOT_STICKY
         }
+
+        // A new start cancels a scheduled shutdown from the previous session.
+        finishJob?.cancel()
+        finishJob = null
 
         ServiceCompat.startForeground(
             this,
@@ -85,11 +89,23 @@ class ServerService : Service() {
         }
     }
 
+    /**
+     * Stops the service shortly after the server is no longer running. The
+     * decision is taken again after the delay: a start that happens in the
+     * meantime (Stopped → Starting) must keep the service, its locks and the
+     * notification alive.
+     */
     private fun finishSoon() {
-        if (finishing) return
-        finishing = true
-        scope.launch {
+        if (finishJob?.isActive == true) return
+        finishJob = scope.launch {
             delay(1200)
+            val status = ServerController.state.value.status
+            if (status == ServerStatus.STARTING || status == ServerStatus.RUNNING ||
+                status == ServerStatus.STOPPING
+            ) {
+                return@launch
+            }
+            if (ServerController.isBusy) return@launch
             releaseLocks()
             ServiceCompat.stopForeground(this@ServerService, ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf()

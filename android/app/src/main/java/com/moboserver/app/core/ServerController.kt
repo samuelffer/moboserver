@@ -5,10 +5,12 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.File
@@ -20,15 +22,32 @@ import java.util.Locale
  * Single owner of the embedded server process. Both the UI and the foreground
  * service talk to this object, so the server can never be started twice and the
  * screen always shows the real state of the process.
+ *
+ * Every start creates a [Session]. Callbacks, watchdogs and network checks carry
+ * the session they belong to and are ignored once a newer one exists: a late
+ * event from a process that was already stopped must never change the state of
+ * the current run.
  */
 object ServerController {
     private const val TAG = "MoboServer"
     private const val MAX_LOG_LINES = 1200
     private const val LOG_FILE_MAX_BYTES = 4L * 1024 * 1024
+    private const val START_TIMEOUT_MS = 60_000L
+    private const val STOP_TIMEOUT_MS = 60_000L
+    private const val FORCE_KILL_GRACE_MS = 4_000L
+
+    /** One run of the server process, from "prepare" until the process exits. */
+    private class Session(val id: Long) {
+        @Volatile var process: ServerProcess? = null
+        @Volatile var stopRequested = false
+        @Volatile var finished = false
+        var startJob: Job? = null
+        var stopJob: Job? = null
+    }
 
     private var appContext: Context? = null
-    private var serverProcess: ServerProcess? = null
-    private var stopRequested = false
+    private var session: Session? = null
+    private var nextSessionId = 0L
     private val logs = ArrayDeque<LogLine>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -45,8 +64,7 @@ object ServerController {
     fun worlds(): WorldRepository? = appContext?.let { WorldRepository(it) }
 
     val isBusy: Boolean
-        get() = _state.value.status == ServerStatus.STARTING || _state.value.status == ServerStatus.RUNNING ||
-            _state.value.status == ServerStatus.STOPPING
+        get() = session?.let { !it.finished } == true
 
     /**
      * Starts the server with the settings currently stored in [Store].
@@ -60,12 +78,31 @@ object ServerController {
     fun start(): Boolean {
         val context = appContext ?: return false
         if (isBusy) return true
-        _state.value = RuntimeState(status = ServerStatus.STARTING)
-        scope.launch { startInternal(context) }
+
+        val created = Session(++nextSessionId)
+        session = created
+        synchronized(logs) { logs.clear() }
+        _state.value = RuntimeState(status = ServerStatus.STARTING, exposure = _state.value.exposure)
+        created.startJob = scope.launch {
+            try {
+                startInternal(context, created)
+            } catch (e: Exception) {
+                Log.e(TAG, "failed to prepare the server", e)
+                if (isCurrent(created)) {
+                    fail(
+                        "Não foi possível preparar o servidor neste aparelho.\n\n" +
+                            "Detalhe: ${e.message}\n\n" +
+                            "Abra Ajustes → Diagnóstico e use \"Testar servidor embutido\".",
+                    )
+                }
+            }
+        }
         return true
     }
 
-    private fun startInternal(context: Context) {
+    private fun isCurrent(s: Session): Boolean = session === s && !s.finished && !s.stopRequested
+
+    private fun startInternal(context: Context, s: Session) {
         val config = Store.config.value
         val repository = WorldRepository(context)
 
@@ -74,92 +111,108 @@ object ServerController {
             val created = try {
                 repository.create("Mundo principal")
             } catch (e: Exception) {
-                fail("Não foi possível criar o mundo: ${e.message}")
+                if (isCurrent(s)) fail("Não foi possível criar o mundo: ${e.message}")
                 return
             }
             worldId = created.id
             Store.update { it.copy(activeWorldId = worldId) }
             appendLog("info", "Novo mundo criado: ${created.name}")
         }
+        if (!isCurrent(s)) return
 
         val worldDir = repository.directory(worldId)
         if (!worldDir.exists() && !worldDir.mkdirs()) {
-            fail("Não foi possível preparar a pasta do mundo")
+            if (isCurrent(s)) fail("Não foi possível preparar a pasta do mundo")
             return
         }
+        if (!isCurrent(s)) return
+        val worldName = repository.nameOf(worldId)
+        _state.update { it.copy(worldName = worldName) }
 
-        synchronized(logs) { logs.clear() }
-        stopRequested = false
         appendLog("info", "Iniciando servidor \"${config.serverName}\" na porta UDP ${config.port}")
-
         val binary = try {
             ServerProcess.resolveBinary(context)
         } catch (e: Exception) {
-            fail("O servidor embutido não foi encontrado no aplicativo: ${e.message}")
+            if (isCurrent(s)) fail("O servidor embutido não foi encontrado no aplicativo: ${e.message}")
             return
         }
+        // Last checkpoint: stopping while the binary is being prepared must not
+        // spawn a process after the app already reported "desligado".
+        if (!isCurrent(s)) return
 
         val process = ServerProcess(
             binary = binary,
             workDir = context.filesDir,
             args = buildArgs(context, config, worldDir),
             environment = buildEnvironment(context),
-            listener = ::onEvent,
+            listener = { event -> onEvent(s, event) },
         )
-        serverProcess = process
-
+        s.process = process
         try {
             process.start()
-            watchStartup(process)
         } catch (e: Exception) {
             Log.e(TAG, "failed to start server", e)
-            fail(
-                "Não foi possível executar o servidor neste aparelho.\n\n" +
-                    "Detalhe: ${e.message}\n\n" +
-                    "Abra Ajustes → Diagnóstico e use \"Testar servidor embutido\" para ver o motivo exato.",
-            )
-            serverProcess = null
+            if (isCurrent(s)) {
+                fail(
+                    "Não foi possível executar o servidor neste aparelho.\n\n" +
+                        "Detalhe: ${e.message}\n\n" +
+                        "Abra Ajustes → Diagnóstico e use \"Testar servidor embutido\" para ver o motivo exato.",
+                )
+            }
+            return
         }
+        watchStartup(s, process)
     }
 
     /** Asks the server to shut down gracefully, saving the world. */
     @Synchronized
     fun stop() {
-        val process = serverProcess
-        if (process == null) {
-            _state.value = _state.value.copy(
-                status = ServerStatus.STOPPED,
-                players = emptyList(),
-                info = null,
-                startedAt = null,
-            )
+        val s = session
+        if (s == null || s.finished) {
+            markStopped()
             return
         }
-        if (stopRequested) return
-        stopRequested = true
+        if (s.stopRequested) return
+        s.stopRequested = true
         LanProbe.stop()
-        _state.value = _state.value.copy(status = ServerStatus.STOPPING)
+
+        val process = s.process
+        if (process == null) {
+            // Still preparing: cancel the pending start so it can never create a
+            // process after the user asked to stop.
+            s.finished = true
+            session = null
+            s.startJob?.cancel()
+            appendLog("info", "Inicialização cancelada antes do servidor subir.")
+            markStopped()
+            return
+        }
+
+        _state.update { it.copy(status = ServerStatus.STOPPING) }
         appendLog("info", "Desligando o servidor e salvando o mundo...")
 
         val sent = process.send(command("stop").toString())
-        scope.launch {
-            delay(3_000)
-            if (!sent) process.destroy()
-            // Saving a big world can take a while; never kill it before that.
-            delay(57_000)
+        s.stopJob = scope.launch {
+            if (!sent) {
+                delay(1_500)
+                process.destroy()
+            }
+            val deadline = System.currentTimeMillis() + STOP_TIMEOUT_MS
+            while (process.isAlive && System.currentTimeMillis() < deadline) delay(500)
             if (process.isAlive) {
                 appendLog("warn", "O servidor não respondeu a tempo, encerrando à força.")
                 process.destroy()
             }
-            if (_state.value.status == ServerStatus.STOPPING) {
-                serverProcess = null
-                stopRequested = false
-                _state.value = _state.value.copy(
-                    status = ServerStatus.STOPPED,
-                    players = emptyList(),
-                    info = null,
-                    startedAt = null,
-                )
+            // The exit event normally arrives first and finishes the session
+            // there; this is only the safety net for a process that never
+            // reports its exit.
+            delay(FORCE_KILL_GRACE_MS)
+            synchronized(this@ServerController) {
+                if (session === s && !s.finished) {
+                    s.finished = true
+                    session = null
+                    markStopped()
+                }
             }
         }
     }
@@ -201,7 +254,7 @@ object ServerController {
 
     fun clearLogs() {
         synchronized(logs) { logs.clear() }
-        _state.value = _state.value.copy(logs = emptyList())
+        _state.update { it.copy(logs = emptyList()) }
     }
 
     fun logText(): String {
@@ -210,85 +263,258 @@ object ServerController {
         return snapshot.joinToString("\n") { "${format.format(Date(it.time))} [${it.level}] ${it.message}" }
     }
 
-    /** Detects the network situation and (optionally) forwards the port. */
+    /**
+     * Detects the network situation and, optionally, asks the router to open
+     * the port. Nothing here proves that players outside can join: UPnP only
+     * reports that the router *accepted* the rule, and STUN only reports which
+     * address the internet sees. The UI keeps the two facts apart.
+     */
     fun refreshExposure(forward: Boolean) {
         val context = appContext ?: return
+        val owner = session
         if (_state.value.exposure.working) return
         scope.launch {
-            _state.value = _state.value.copy(
-                exposure = _state.value.exposure.copy(
-                    working = true,
-                    upnpMessage = if (forward) "Conversando com o roteador..." else _state.value.exposure.upnpMessage,
-                ),
-            )
-            val lanIp = Net.lanIp()
-            _state.value = _state.value.copy(
-                exposure = _state.value.exposure.copy(lanIp = lanIp),
-            )
-
-            if (forward && !lanIp.isNullOrBlank()) {
-                val port = _state.value.info?.port ?: Store.config.value.port
-                val result = Upnp.forward(context, port, lanIp)
-                appendLog(if (result.ok) "info" else "warn", result.message)
-                _state.value = _state.value.copy(
-                    exposure = _state.value.exposure.copy(
-                        upnpOk = result.ok,
-                        upnpMessage = result.message,
-                        publicIp = result.externalIp ?: _state.value.exposure.publicIp,
+            _state.update { st ->
+                st.copy(
+                    exposure = st.exposure.copy(
+                        working = true,
+                        upnpMessage = if (forward) "Conversando com o roteador..." else st.exposure.upnpMessage,
                     ),
                 )
             }
 
-            val publicIp = _state.value.exposure.publicIp ?: Net.publicIp()
-            val cgnat = publicIp != null && Net.isCarrierGradeNat(publicIp)
-            if (cgnat) {
-                appendLog(
-                    "warn",
-                    "Seu IP público ($publicIp) está na faixa 100.64/10: o provedor usa CGNAT. " +
-                        "Ninguém de fora consegue conectar, mesmo liberando a porta. " +
-                        "Use Tailscale/ZeroTier (grátis) ou peça IP público ao provedor.",
+            val lanIp = Net.lanIp()
+            if (!stillSame(owner)) return@launch
+            _state.update { st -> st.copy(exposure = st.exposure.copy(lanIp = lanIp)) }
+
+            var wanIp: String? = null
+            if (forward && !lanIp.isNullOrBlank()) {
+                val port = _state.value.info?.port ?: Store.config.value.port
+                val result = Upnp.forward(context, port, lanIp)
+                appendLog(if (result.ok) "info" else "warn", result.message)
+                wanIp = result.externalIp
+                if (!stillSame(owner)) return@launch
+                _state.update { st ->
+                    st.copy(
+                        exposure = st.exposure.copy(
+                            // "upnpOk" means "the router accepted the mapping",
+                            // nothing more.
+                            upnpOk = result.ok,
+                            upnpMessage = result.message,
+                            wanIp = result.externalIp ?: st.exposure.wanIp,
+                        ),
+                    )
+                }
+            }
+
+            // Observed address, independent from what the router believes.
+            val observed = Net.publicIp()
+            if (!stillSame(owner)) return@launch
+            _state.update { st ->
+                st.copy(
+                    exposure = st.exposure.copy(
+                        working = false,
+                        publicIp = observed ?: st.exposure.publicIp,
+                        wanIp = st.exposure.wanIp ?: wanIp,
+                    ),
                 )
             }
-            _state.value = _state.value.copy(
-                exposure = _state.value.exposure.copy(
-                    working = false,
-                    publicIp = publicIp,
-                    carrierGradeNat = cgnat,
-                ),
-            )
+            appendLog("info", describeInternet(Net.lanIp(), _state.value.exposure))
         }
     }
 
     /** Asks a public API whether the server is reachable from the internet. */
     fun checkExternalAccess() {
-        val ip = _state.value.exposure.publicIp
+        val owner = session
+        val exposure = _state.value.exposure
         val port = _state.value.info?.port ?: Store.config.value.port
-        if (ip.isNullOrBlank()) {
-            _state.value = _state.value.copy(
-                exposure = _state.value.exposure.copy(
-                    externalCheck = "Não consegui descobrir o IP público. Confira a internet do celular.",
-                ),
-            )
+        val target = exposure.publicIp ?: exposure.wanIp
+        if (target.isNullOrBlank()) {
+            _state.update { st ->
+                st.copy(
+                    exposure = st.exposure.copy(
+                        externalVerified = false,
+                        externalCheck = "Sem endereço público conhecido: não deu para testar.",
+                    ),
+                )
+            }
             return
         }
-        if (_state.value.exposure.working) return
+        if (exposure.working) return
         scope.launch {
-            _state.value = _state.value.copy(
-                exposure = _state.value.exposure.copy(working = true, externalCheck = "Verificando..."),
-            )
-            val result = Net.checkBedrockReachable(ip, port)
-            appendLog("info", "Teste de acesso externo: $result")
-            _state.value = _state.value.copy(
-                exposure = _state.value.exposure.copy(working = false, externalCheck = result),
-            )
+            _state.update { st ->
+                st.copy(exposure = st.exposure.copy(working = true, externalCheck = "Testando de fora..."))
+            }
+            val result = Net.checkBedrockReachable(target, port)
+            val verified = result.startsWith("Acessível")
+            appendLog("info", "Teste de acesso externo ($target:$port): $result")
+            if (!stillSame(owner)) return@launch
+            _state.update { st ->
+                st.copy(
+                    exposure = st.exposure.copy(
+                        working = false,
+                        externalCheck = result,
+                        externalVerified = verified,
+                    ),
+                )
+            }
         }
     }
 
     /**
-     * Serves a tiny status page so a PC can prove the LAN path works. It is
-     * stopped together with the server.
+     * Human readable summary of the current network shape. It is deliberately
+     * phrased as observation + hypothesis: the app cannot see the router's NAT
+     * table or the carrier's setup.
+     */
+    fun describeInternet(lanIp: String?, exposure: Exposure): String {
+        val lines = ArrayList<String>()
+        lines.add(if (lanIp != null) "Rede local: $lanIp" else "Sem Wi-Fi ativo")
+        exposure.wanIp?.let { lines.add("Endereço informado pelo roteador (UPnP): $it") }
+        exposure.publicIp?.let { lines.add("Endereço visto por um servidor STUN: $it") }
+        if (exposure.wanIp != null && exposure.publicIp != null && exposure.wanIp != exposure.publicIp) {
+            lines.add(
+                "O roteador e o STUN discordam: provavelmente há outro NAT entre o roteador e a internet.",
+            )
+        }
+        exposure.publicIp?.let { ip ->
+            if (Net.isPrivateIp(ip)) {
+                lines.add("O endereço observado é privado: o celular não tem caminho direto para a internet.")
+            } else if (Net.isCarrierGradeNat(ip)) {
+                lines.add("O endereço observado está em 100.64/10: indício de CGNAT do provedor.")
+            }
+        }
+        if (exposure.upnpOk) {
+            lines.add("O roteador aceitou a regra de redirecionamento; isso não confirma acesso externo.")
+        }
+        return lines.joinToString(" • ")
+    }
+
+    // ---------------------------------------------------------------- internal
+
+    /** True when [owner] is still the session the caller started working for. */
+    private fun stillSame(owner: Session?): Boolean {
+        val current = session
+        if (owner == null) return current == null || current.finished
+        return current === owner && !owner.finished
+    }
+
+    private fun markStopped() {
+        _state.update {
+            it.copy(
+                status = ServerStatus.STOPPED,
+                players = emptyList(),
+                info = null,
+                startedAt = null,
+            )
+        }
+    }
+
+    private fun watchStartup(s: Session, process: ServerProcess) {
+        scope.launch {
+            delay(START_TIMEOUT_MS)
+            if (session === s && !s.finished && !s.stopRequested &&
+                _state.value.status == ServerStatus.STARTING && s.process === process
+            ) {
+                appendLog("error", "O servidor não ficou online em 60 segundos.")
+                process.destroy()
+                s.stopRequested = true
+                fail(
+                    "O servidor não terminou de iniciar em 60 segundos. Abra o Console para ver a última " +
+                        "mensagem do servidor e tente novamente.",
+                )
+            }
+        }
+    }
+
+    private fun onEvent(s: Session, event: ServerEvent) {
+        // A late event from an old process must never touch the current run.
+        if (session !== s || s.finished) return
+
+        when (event) {
+            is ServerEvent.Ready -> {
+                _state.update {
+                    it.copy(
+                        status = ServerStatus.RUNNING,
+                        startedAt = System.currentTimeMillis(),
+                        info = ServerInfo(
+                            port = event.port,
+                            mcVersion = event.version,
+                            protocol = event.protocol,
+                            maxPlayers = event.maxPlayers,
+                            authEnabled = event.authEnabled,
+                        ),
+                        error = null,
+                    )
+                }
+                appendLog("info", "Servidor iniciado no celular • Minecraft Bedrock ${event.version} • porta ${event.port}")
+                startProbePage(s, event.port, event.version, event.protocol, event.maxPlayers, event.authEnabled)
+                refreshExposure(forward = Store.config.value.autoForward)
+            }
+
+            is ServerEvent.Log -> appendLog(event.level, event.message)
+
+            is ServerEvent.Lan -> {
+                _state.update { st ->
+                    st.copy(info = st.info?.copy(lanTargets = event.targets))
+                }
+                val reachable = event.targets.filter { it.ok }
+                if (reachable.isEmpty() && event.targets.isNotEmpty()) {
+                    appendLog(
+                        "warn",
+                        "O servidor não respondeu em nenhum endereço local a partir do próprio celular. " +
+                            "Possíveis causas: VPN ativa ou regra de firewall do sistema.",
+                    )
+                }
+            }
+
+            is ServerEvent.Join -> {
+                val players = _state.value.players.toMutableList()
+                if (players.none { it.name.equals(event.player.name, ignoreCase = true) }) {
+                    players.add(event.player)
+                }
+                _state.update { it.copy(players = players) }
+            }
+
+            is ServerEvent.Quit -> {
+                _state.update { st ->
+                    st.copy(players = st.players.filterNot { p -> p.name.equals(event.name, ignoreCase = true) })
+                }
+            }
+
+            is ServerEvent.Players -> _state.update { it.copy(players = event.players) }
+
+            is ServerEvent.Fatal -> fail(event.message)
+
+            is ServerEvent.Exited -> {
+                LanProbe.stop()
+                s.finished = true
+                if (session === s) session = null
+                val status = _state.value.status
+                when {
+                    s.stopRequested -> {
+                        if (status == ServerStatus.STOPPING || status == ServerStatus.RUNNING ||
+                            status == ServerStatus.STARTING
+                        ) {
+                            markStopped()
+                        }
+                        appendLog("info", "Servidor desligado.")
+                    }
+                    status == ServerStatus.ERROR -> Unit
+                    else -> fail(
+                        "O servidor foi encerrado inesperadamente (código ${event.code}). " +
+                            "Veja o console para descobrir o motivo.",
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Serves a tiny status page so another device can prove the TCP path works.
+     * It says nothing about UDP, which is what Minecraft uses.
      */
     private fun startProbePage(
+        s: Session,
         port: Int,
         version: String,
         protocol: Int,
@@ -299,139 +525,66 @@ object ServerController {
         val probePort = LanProbe.start(8080) {
             buildString {
                 appendLine("Servidor: ${Store.config.value.serverName}")
-                appendLine("Endereço no Minecraft: ${lanIp ?: "IP do celular"}:$port")
+                appendLine("Endereço no Minecraft (UDP): ${lanIp ?: "IP do celular"}:$port")
                 appendLine("Versão: $version (protocolo $protocol)")
                 appendLine("Jogadores: ${_state.value.players.size}/$maxPlayers")
                 appendLine("Modo: ${if (authEnabled) "exige conta Microsoft" else "aberto (sem login)"}")
             }
         }
-        if (probePort > 0) {
-            appendLog(
-                "info",
-                "Teste de rede: abra http://${lanIp ?: "IP do celular"}:$probePort no navegador do PC " +
-                    "para confirmar que o celular está acessível.",
-            )
-            _state.value = _state.value.copy(info = _state.value.info?.copy(probePort = probePort))
-        }
-    }
-
-    // ---------------------------------------------------------------- internal
-
-    private fun watchStartup(process: ServerProcess) {
-        scope.launch {
-            delay(60_000)
-            if (_state.value.status == ServerStatus.STARTING) {
-                fail(
-                    "O servidor não terminou de iniciar em 60 segundos. Abra o Console para ver a última " +
-                        "mensagem do servidor e tente novamente.",
-                )
-                process.destroy()
-            }
-        }
-    }
-
-    private fun onEvent(event: ServerEvent) {
-        when (event) {
-            is ServerEvent.Ready -> {
-                _state.value = _state.value.copy(
-                    status = ServerStatus.RUNNING,
-                    startedAt = System.currentTimeMillis(),
-                    info = ServerInfo(event.port, event.version, event.protocol, event.maxPlayers, event.authEnabled),
-                    error = null,
-                )
-                appendLog("info", "Servidor online! Minecraft Bedrock ${event.version} • porta ${event.port}")
-                startProbePage(event.port, event.version, event.protocol, event.maxPlayers, event.authEnabled)
-                refreshExposure(forward = Store.config.value.autoForward)
-            }
-
-            is ServerEvent.Log -> appendLog(event.level, event.message)
-
-            is ServerEvent.Lan -> {
-                _state.value = _state.value.copy(
-                    info = _state.value.info?.copy(lanTargets = event.targets),
-                )
-                val reachable = event.targets.filter { it.ok }
-                if (reachable.isEmpty() && event.targets.isNotEmpty()) {
-                    appendLog(
-                        "warn",
-                        "O servidor não respondeu em nenhum endereço local. " +
-                            "Se o problema persistir, desative VPN/firewall do aparelho.",
-                    )
-                }
-            }
-
-            is ServerEvent.Join -> {
-                val players = _state.value.players.toMutableList()
-                if (players.none { it.name.equals(event.player.name, ignoreCase = true) }) {
-                    players.add(event.player)
-                }
-                _state.value = _state.value.copy(players = players)
-            }
-
-            is ServerEvent.Quit -> {
-                _state.value = _state.value.copy(
-                    players = _state.value.players.filterNot { it.name.equals(event.name, ignoreCase = true) },
-                )
-            }
-
-            is ServerEvent.Players -> {
-                _state.value = _state.value.copy(players = event.players)
-            }
-
-            is ServerEvent.Fatal -> fail(event.message)
-
-            ServerEvent.Stopped -> {
-                serverProcess = null
-                stopRequested = false
-                _state.value = _state.value.copy(
-                    status = ServerStatus.STOPPED,
-                    players = emptyList(),
-                    info = null,
-                    startedAt = null,
-                )
-                appendLog("info", "Servidor desligado.")
-            }
-
-            is ServerEvent.Exited -> {
-                serverProcess = null
-                LanProbe.stop()
-                if (stopRequested) {
-                    stopRequested = false
-                    if (_state.value.status == ServerStatus.STOPPING) {
-                        _state.value = _state.value.copy(
-                            status = ServerStatus.STOPPED,
-                            players = emptyList(),
-                            info = null,
-                            startedAt = null,
-                        )
-                    }
-                } else if (_state.value.status != ServerStatus.ERROR) {
-                    fail(
-                        "O servidor foi encerrado inesperadamente (código ${event.code}). " +
-                            "Veja o console para descobrir o motivo.",
-                    )
-                }
-            }
+        if (probePort <= 0) return
+        appendLog(
+            "info",
+            "Teste de TCP: http://${lanIp ?: "IP do celular"}:$probePort (só confirma a rede, o jogo usa UDP).",
+        )
+        if (session === s) {
+            _state.update { st -> st.copy(info = st.info?.copy(probePort = probePort)) }
         }
     }
 
     private fun fail(message: String) {
         appendLog("error", message)
-        _state.value = _state.value.copy(
-            status = ServerStatus.ERROR,
-            error = message,
-            players = emptyList(),
-            info = null,
-            startedAt = null,
-        )
+        _state.update {
+            it.copy(
+                status = ServerStatus.ERROR,
+                error = message,
+                players = emptyList(),
+                info = null,
+                startedAt = null,
+            )
+        }
     }
 
     private fun sendCommand(json: JSONObject): Boolean {
-        val process = serverProcess ?: return false
+        val process = session?.process ?: return false
         return process.send(json.toString())
     }
 
     private fun command(name: String): JSONObject = JSONObject().put("cmd", name)
+
+    private fun appendLog(level: String, message: String) {
+        if (message.isBlank()) return
+        val line = LogLine(System.currentTimeMillis(), level, message)
+        val snapshot: List<LogLine>
+        synchronized(logs) {
+            logs.addLast(line)
+            while (logs.size > MAX_LOG_LINES) logs.removeFirst()
+            snapshot = logs.toList()
+        }
+        _state.update { it.copy(logs = snapshot) }
+        appendToFile(level, message)
+    }
+
+    private fun appendToFile(level: String, message: String) {
+        val context = appContext ?: return
+        try {
+            val file = File(context.filesDir, "server.log")
+            if (file.length() > LOG_FILE_MAX_BYTES) file.delete()
+            val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+            file.appendText("$stamp [$level] $message\n")
+        } catch (e: Exception) {
+            // logging must never break the server
+        }
+    }
 
     /**
      * Android resolves names through netd, not /etc/resolv.conf: a pure Go
@@ -480,8 +633,6 @@ object ServerController {
     private fun buildEnvironment(context: Context): Map<String, String> {
         val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         val memoryClass = activityManager?.memoryClass ?: 192
-        // The Go runtime shares the process with the JVM, so its soft memory
-        // limit is kept close to the app heap class instead of the device RAM.
         val memoryLimit = memoryClass.coerceIn(256, 1024)
         val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
         return mapOf(
@@ -491,30 +642,5 @@ object ServerController {
             "GOMAXPROCS" to cores.coerceAtMost(4).toString(),
             "GOGC" to "80",
         )
-    }
-
-    private fun appendLog(level: String, message: String) {
-        if (message.isBlank()) return
-        val line = LogLine(System.currentTimeMillis(), level, message)
-        val snapshot: List<LogLine>
-        synchronized(logs) {
-            logs.addLast(line)
-            while (logs.size > MAX_LOG_LINES) logs.removeFirst()
-            snapshot = logs.toList()
-        }
-        _state.value = _state.value.copy(logs = snapshot)
-        appendToFile(level, message)
-    }
-
-    private fun appendToFile(level: String, message: String) {
-        val context = appContext ?: return
-        try {
-            val file = File(context.filesDir, "server.log")
-            if (file.length() > LOG_FILE_MAX_BYTES) file.delete()
-            val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-            file.appendText("$stamp [$level] $message\n")
-        } catch (e: Exception) {
-            // logging must never break the server
-        }
     }
 }

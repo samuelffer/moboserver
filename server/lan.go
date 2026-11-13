@@ -1,175 +1,65 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"net"
 	"strings"
-	"syscall"
-	"time"
-
-	"github.com/df-mc/dragonfly/server"
-	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
-// lanBroadcastAddr is where Bedrock clients listen for worlds opened to LAN
-// (the same address every Bedrock host uses).
-const lanBroadcastAddr = "224.0.2.60:4445"
+// How LAN discovery really works for Minecraft Bedrock
+// ----------------------------------------------------
+// Java Edition uses a multicast announcement to 224.0.2.60:4445 with a
+// "[MOTD]..." payload. Bedrock does not: the *client* broadcasts a RakNet
+// "Unconnected Ping" (0x01) to UDP 19132 (and to the addresses it learned from
+// the interface), and every server that receives it answers with an
+// "Unconnected Pong" (0x1c) whose payload is
+//
+//	MCPE;<motd>;<protocol>;<version>;<players>;<max>;<server id>;<motd 2>;<game mode>;<port v4>;<port v6>
+//
+// go-raknet (through gophertunnel, used by Dragonfly) answers those pings from
+// the very same UDP socket the game listens on, as long as that socket is bound
+// to a wildcard address. The previous build also ran a Java-style announcer to
+// 224.0.2.60:4445 with a Bedrock payload; that combination is ignored by both
+// editions, so it was removed instead of being "fixed". No second socket is
+// opened: a second socket on the same port would either fail to bind or steal
+// packets from the game listener.
 
-// lanServerID identifies the announcement; clients only need it to be stable.
-const lanServerID uint64 = 13253860892328930865
-
-// startLanAnnouncer advertises this server the same way a Bedrock world does
-// when it is opened to LAN. Phones, PCs and consoles that are on the same Wi-Fi
-// then list "MoboServer" under LAN/Worlds without anyone typing an address.
-func startLanAnnouncer(ctx context.Context, srv *server.Server, opts options) {
-	ip := lanInterfaceIPv4()
-	if ip == nil {
-		emitLog("warn", "Sem rede local (Wi-Fi): o servidor não será anunciado na aba LAN. "+
-			"Na aba LAN só aparecem aparelhos na mesma rede Wi-Fi; em dados móveis isso não existe.")
-		return
-	}
-
-	conn, err := net.ListenPacket("udp4", "0.0.0.0:0")
-	if err != nil {
-		emitLog("warn", "Não foi possível anunciar na LAN: "+err.Error())
-		return
-	}
-	if udp, ok := conn.(*net.UDPConn); ok {
-		// Without this the packet may leave through the mobile data interface.
-		if raw, err := udp.SyscallConn(); err == nil {
-			_ = raw.Control(func(fd uintptr) {
-				_ = syscall.SetsockoptInet4Addr(int(fd), syscall.IPPROTO_IP, syscall.IP_MULTICAST_IF, *ip)
-			})
-		}
-	}
-
-	target, err := net.ResolveUDPAddr("udp4", lanBroadcastAddr)
-	if err != nil {
-		_ = conn.Close()
-		return
-	}
-
-	emitLog("info", fmt.Sprintf("Anunciando na rede local: %s:%d (aba LAN do Minecraft)",
-		net.IP(ip[:]).String(), opts.Port))
-
-	go func() {
-		defer conn.Close()
-		ticker := time.NewTicker(1500 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				_, _ = conn.WriteTo([]byte(lanPayload(srv, opts)), target)
-			}
-		}
-	}()
-}
-
-// lanPayload builds the announcement exactly like a LAN world does.
-func lanPayload(srv *server.Server, opts options) string {
-	motd := sanitiseMotd(opts.Name)
-	return fmt.Sprintf("[MCPE;%s;%d;%s;%d;%d;%d;%s;%s;1;%d;%d]",
-		motd,
-		protocol.CurrentProtocol,
-		protocol.CurrentVersion,
-		srv.PlayerCount(),
-		opts.MaxPlayers,
-		lanServerID,
-		motd,
-		gameModeLabel(opts.GameMode),
-		opts.Port,
-		opts.Port,
-	)
-}
-
-func sanitiseMotd(name string) string {
-	clean := strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(name, ";", ","), "\n", " "))
-	if clean == "" {
-		return "MoboServer"
-	}
-	if len(clean) > 60 {
-		clean = clean[:60]
-	}
-	return clean
-}
-
-func gameModeLabel(mode string) string {
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "creative":
-		return "Creative"
-	case "adventure":
-		return "Adventure"
-	case "spectator":
-		return "Spectator"
-	default:
-		return "Survival"
-	}
-}
-
-// lanInterfaceIPv4 returns the IPv4 of the interface used by the local network,
-// preferring Wi-Fi/hotspot interfaces over cellular ones.
-func lanInterfaceIPv4() *[4]byte {
-	interfaces, err := net.Interfaces()
-	if err != nil {
-		return nil
-	}
-	var best *[4]byte
-	bestScore := -1
-	for _, iface := range interfaces {
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		score := scoreInterface(iface.Name)
-		if score < 0 {
-			continue
-		}
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-		for _, addr := range addrs {
-			ipNet, ok := addr.(*net.IPNet)
-			if !ok {
-				continue
-			}
-			ip4 := ipNet.IP.To4()
-			if ip4 == nil || ip4.IsLoopback() || ip4.IsLinkLocalUnicast() || ip4.IsUnspecified() {
-				continue
-			}
-			// Aceita 10/8, 172.16/12, 192.168/16, 100.64/10 (hotspot com
-			// CGNAT) e qualquer IPv4 de uma interface de Wi-Fi/Ethernet.
-			if !ip4.IsPrivate() && !isSharedAddress(ip4) && score < 2 {
-				continue
-			}
-			if score > bestScore {
-				best = &[4]byte{ip4[0], ip4[1], ip4[2], ip4[3]}
-				bestScore = score
-			}
-		}
-	}
-	return best
-}
-
-// isSharedAddress reports whether ip is inside 100.64.0.0/10 (RFC 6598),
-// the range carriers and phone hotspots use when they NAT their clients.
-func isSharedAddress(ip net.IP) bool {
-	return len(ip) == 4 && ip[0] == 100 && ip[1] >= 64 && ip[1] <= 127
-}
-
+// scoreInterface ranks network interfaces so the app can show the address a
+// player on the same network should use.
 func scoreInterface(name string) int {
 	switch {
-	case strings.HasPrefix(name, "wlan"):
+	case strings.HasPrefix(name, "wlan"), strings.HasPrefix(name, "ap"),
+		strings.HasPrefix(name, "swlan"), strings.HasPrefix(name, "softap"):
 		return 3
-	case strings.HasPrefix(name, "ap"), strings.HasPrefix(name, "swlan"):
+	case strings.HasPrefix(name, "eth"), strings.HasPrefix(name, "rndis"), strings.HasPrefix(name, "usb"):
 		return 2
-	case strings.HasPrefix(name, "eth"):
-		return 1
-	case strings.HasPrefix(name, "rmnet"), strings.HasPrefix(name, "ccmni"):
+	case strings.HasPrefix(name, "rmnet"), strings.HasPrefix(name, "ccmni"),
+		strings.HasPrefix(name, "radio"), strings.HasPrefix(name, "wwan"):
+		return 0
+	case strings.HasPrefix(name, "tun"), strings.HasPrefix(name, "tap"),
+		strings.HasPrefix(name, "ppp"), strings.HasPrefix(name, "ipsec"):
+		// VPN interfaces: traffic here is not the local network.
 		return -1
 	default:
-		return 0
+		return 1
 	}
+}
+
+// isPrivateIPv4 reports whether the address is in a range that cannot be
+// reached from the internet directly (RFC 1918 + CGNAT shared space).
+func isPrivateIPv4(ip string) bool {
+	parsed := net.ParseIP(ip).To4()
+	if parsed == nil {
+		return false
+	}
+	return parsed.IsPrivate() || isSharedAddress(parsed)
+}
+
+// isSharedAddress reports whether ip is in 100.64.0.0/10, the shared address
+// space used by carriers that apply CGNAT.
+func isSharedAddress(ip net.IP) bool {
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return false
+	}
+	return ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127
 }

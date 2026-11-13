@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/df-mc/dragonfly/server/block/cube"
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/df-mc/dragonfly/server/world/chunk"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 )
 
 // raknetMagic is the constant used by the RakNet handshake of Minecraft
@@ -46,9 +48,6 @@ func runSelftest(opts options, log *slog.Logger) int {
 	// everything this test covers.
 	opts.Auth = false
 	opts.ignoreStdin = true
-	if opts.Port == 19132 {
-		opts.Port = 19555
-	}
 
 	if code := checkGenerator(); code != 0 {
 		return code
@@ -101,8 +100,8 @@ func runSelftest(opts options, log *slog.Logger) int {
 		return 1
 	}
 	fmt.Fprintf(os.Stderr, "selftest: pong: %s\n", motd)
-	if !strings.HasPrefix(motd, "MCPE;") || !strings.Contains(motd, opts.Name) {
-		fmt.Fprintln(os.Stderr, "selftest: unexpected pong payload")
+	if err := validatePong(motd, opts.Port, opts.Name); err != nil {
+		fmt.Fprintln(os.Stderr, "selftest: pong invalido:", err)
 		cancel()
 		<-done
 		return 1
@@ -121,8 +120,8 @@ func runSelftest(opts options, log *slog.Logger) int {
 			<-done
 			return 1
 		}
-		if !strings.HasPrefix(lanMotd, "MCPE;") {
-			fmt.Fprintf(os.Stderr, "selftest: unexpected pong via %s\n", address)
+		if err := validatePong(lanMotd, opts.Port, opts.Name); err != nil {
+			fmt.Fprintf(os.Stderr, "selftest: pong invalido via %s: %v\n", address, err)
 			cancel()
 			<-done
 			return 1
@@ -202,4 +201,37 @@ func pingServer(addr string, timeout time.Duration) (string, error) {
 		}
 		return string(buf[35 : 35+length]), nil
 	}
+}
+
+// validatePong checks the payload of an Unconnected Pong, which is exactly what
+// a Minecraft Bedrock client reads when it discovers the server on the local
+// network. Checking the fields (and not only the "MCPE;" prefix) is what makes
+// this a regression test for LAN discovery:
+//
+//	MCPE;<name>;<protocol>;<version>;<players>;<max>;<id>;<sub name>;<mode>;1;<port>;<port>;0;0;
+func validatePong(motd string, port int, name string) error {
+	parts := strings.Split(motd, ";")
+	if len(parts) < 12 {
+		return fmt.Errorf("payload com %d campos, esperado ao menos 12: %q", len(parts), motd)
+	}
+	if parts[0] != "MCPE" {
+		return fmt.Errorf("edicao inesperada %q (esperado MCPE)", parts[0])
+	}
+	if parts[1] != name {
+		return fmt.Errorf("nome %q difere do configurado %q", parts[1], name)
+	}
+	if got, err := strconv.Atoi(parts[2]); err != nil {
+		return fmt.Errorf("protocolo invalido %q", parts[2])
+	} else if got != protocol.CurrentProtocol {
+		return fmt.Errorf("protocolo %d difere do compilado %d", got, protocol.CurrentProtocol)
+	}
+	if parts[3] != protocol.CurrentVersion {
+		return fmt.Errorf("versao %q difere da compilada %q", parts[3], protocol.CurrentVersion)
+	}
+	if got, err := strconv.Atoi(parts[10]); err != nil {
+		return fmt.Errorf("porta invalida %q", parts[10])
+	} else if got != port {
+		return fmt.Errorf("porta anunciada %d difere da real %d", got, port)
+	}
+	return nil
 }
