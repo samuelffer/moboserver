@@ -21,10 +21,10 @@ Daemon will be stopped at the end of the build
 > Task :app:mapReleaseSourceSetPaths
 > Task :app:generateReleaseResources
 > Task :app:packageReleaseResources
-> Task :app:mergeReleaseResources
 > Task :app:createReleaseCompatibleScreenManifests
 > Task :app:extractDeepLinksRelease
 > Task :app:parseReleaseLocalResources
+> Task :app:mergeReleaseResources
 
 > Task :app:processReleaseMainManifest
 /home/runner/work/moboserver/moboserver/android/app/src/main/AndroidManifest.xml:17:9-41 Warning:
@@ -34,26 +34,39 @@ The AGP Upgrade Assistant can remove the attribute from the AndroidManifest.xml 
 > Task :app:processReleaseManifest
 > Task :app:preReleaseUnitTestBuild
 > Task :app:javaPreCompileRelease
-> Task :app:processReleaseManifestForPackage
 > Task :app:javaPreCompileReleaseUnitTest
+> Task :app:processReleaseManifestForPackage
 > Task :app:processReleaseResources
 
-> Task :app:compileReleaseKotlin FAILED
-e: file:///home/runner/work/moboserver/moboserver/android/app/src/main/java/com/moboserver/app/ui/AppRoot.kt:150:36 Unresolved reference 'saveWorld'.
-e: file:///home/runner/work/moboserver/moboserver/android/app/src/main/java/com/moboserver/app/ui/AppRoot.kt:151:37 Unresolved reference 'testBinary'.
+> Task :app:compileReleaseKotlin
+w: file:///home/runner/work/moboserver/moboserver/android/app/src/main/java/com/moboserver/design/MoboDesign.kt:372:30 'val Icons.Outlined.HelpOutline: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.HelpOutline.
+w: file:///home/runner/work/moboserver/moboserver/android/app/src/main/java/com/moboserver/design/MoboDesign.kt:591:33 'val Icons.Outlined.Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Send.
+
+> Task :app:compileReleaseJavaWithJavac
+> Task :app:bundleReleaseClassesToCompileJar
+> Task :app:bundleReleaseClassesToRuntimeJar
+> Task :app:processReleaseJavaRes
+> Task :app:compileReleaseUnitTestKotlin
+> Task :app:compileReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processReleaseUnitTestJavaRes
+
+> Task :app:testReleaseUnitTest
+
+AddressClassifierTest > sem_ip_publico_o_endereco_do_roteador_e_rotulado_como_wan FAILED
+    org.junit.ComparisonFailure at AddressClassifierTest.kt:78
+
+27 tests completed, 1 failed
+
+> Task :app:testReleaseUnitTest FAILED
 
 FAILURE: Build failed with an exception.
 
 * What went wrong:
-Execution failed for task ':app:compileReleaseKotlin'.
-> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
-   > Compilation error. See log for more details
+Execution failed for task ':app:testReleaseUnitTest'.
+> There were failing tests. See the report at: file:///home/runner/work/moboserver/moboserver/android/app/build/reports/tests/testReleaseUnitTest/index.html
 
 * Try:
-> Run with --stacktrace option to get the stack trace.
-> Run with --info or --debug option to get more log output.
 > Run with --scan to get full insights.
-> Get more help at https://help.gradle.org.
 
-BUILD FAILED in 1m 9s
-19 actionable tasks: 19 executed
+BUILD FAILED in 2m 2s
+26 actionable tasks: 26 executed
