@@ -56,7 +56,27 @@ onde ele **envia**. Só há três saídas reais:
 A proposta do prompt (frp + faixa UDP + candidatos) corresponde ao caso 1 com frp como
 transporte; o caso 2 chega ao mesmo resultado prático sem VPN e sem segundo executável.
 
-### Por que a implementação ainda não está feita
+### O que já foi implementado nesta revisão (caminho 2)
+
+* `server/internal/tunnel/udprelay.go` — **MOBOTUN/2**: o celular pede N portas
+  públicas, o relay abre exatamente N sockets UDP e cada datagrama viaja com o
+  endereço do jogador junto. Testes: `TestUDPRelayPreservaPortaEOrigem`,
+  `TestUDPRelayRejeitaTokenInvalido`.
+* `server/relaymux.go` — `ice.UDPMux` sobre esse túnel: `GetListenAddresses` e
+  `LocalAddr` devolvem `IP público:porta do relay`, então o candidato anunciado
+  já é o alcançável de fora; `ReadFrom` entrega o datagrama com o IP do jogador e
+  `WriteTo` o envia pelo túnel. Testes: `TestRelayMuxAtribuiPortasUnicas`,
+  `TestRelayMuxEntregaDatagramas` (ida e volta por portas distintas).
+* `-relay-udp-ports` / `-relay-public-ip` + `-udp-listen` no relay: ligam o mux
+  no servidor e o modo por faixa no relay. Sem essas flags, nada muda: a LAN
+  continua exatamente como estava.
+* `infra/relay/` — unit do systemd, firewall, variáveis e limites.
+
+Isso ainda **não** é o acesso externo funcionando: falta o host público e a
+prova real. O que mudou é que o caminho passou a existir no código e está coberto
+por testes locais de ida e volta.
+
+### Por que o caminho 1 (frp/TUN) não foi implementado
 
 * O caso 1 precisa de `gvisor.dev/gvisor` (ou equivalente) **e** do cliente frp
   (`github.com/fatedier/frp`) como bibliotecas. Este ambiente não tem toolchain Go e só

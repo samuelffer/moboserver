@@ -26,6 +26,8 @@ func main() {
 		tokens  = flag.String("tokens", "", "comma separated tokens accepted (required)")
 		ports   = flag.String("ports", "", "public UDP port range, e.g. 19200-19300 (empty = ephemeral)")
 		idle    = flag.Duration("idle", 60*time.Second, "close a player flow after this much silence")
+		udpAddr = flag.String("udp-listen", "", "TCP address for UDP-range sessions (MOBOTUN/2, e.g. :9001; empty disables)")
+		udpMax  = flag.Int("udp-ports", 8, "maximum public UDP ports per UDP-range session")
 		verbose = flag.Bool("v", true, "log sessions")
 	)
 	flag.Parse()
@@ -52,6 +54,27 @@ func main() {
 
 	// One relay per token keeps the policy trivial: a session is accepted only
 	// if its token is in the list.
+	// Modo por faixa de portas (MOBOTUN/2): uma porta pública por conexão ICE,
+	// usado pelo NetherNet. Roda em um listener TCP separado para que a política
+	// de um modo não dependa do outro.
+	if *udpAddr != "" {
+		udpRelay := &tunnel.UDPRelay{
+			Listen:    *udpAddr,
+			Tokens:    tokenList,
+			PortRange: portRange,
+			MaxPorts:  *udpMax,
+			Log:       logf,
+		}
+		go func() {
+			if err := udpRelay.ListenAndServe(ctx, func(addr string) {
+				logf("controle UDP em " + addr)
+			}); err != nil {
+				fmt.Fprintln(os.Stderr, "relay UDP:", err)
+				stop()
+			}
+		}()
+	}
+
 	r := &tunnel.Relay{Listen: *listen, PortRange: portRange, FlowIdle: *idle, Log: logf, Tokens: tokenList}
 	logf(fmt.Sprintf("aceitando %d token(s)", len(tokenList)))
 	if err := r.ListenAndServe(ctx, func(addr string) {

@@ -1,0 +1,28 @@
+[Unit]
+Description=MoboServer relay (túnel público)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/moboserver/relay.env
+ExecStart=/usr/local/bin/mobosrv-relay \
+    -listen :9000 \
+    -udp-listen :9001 \
+    -tokens ${MOBOSRV_TOKEN} \
+    -ports 19200-19240 \
+    -udp-ports 8
+Restart=always
+RestartSec=5
+# Sem privilégios e sem escrita no disco: o relay não guarda estado.
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+MemoryMax=256M
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
