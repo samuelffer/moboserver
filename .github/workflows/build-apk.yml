@@ -43,6 +43,7 @@ jobs:
         working-directory: server
         run: |
           set -o pipefail
+          set +e
           {
             set -euo pipefail
             go mod tidy
@@ -67,6 +68,18 @@ jobs:
           # Tunel: relay local + cliente + ping RakNet pela porta publica.
           /tmp/mobosrv -selftest -port 19136 -raknet -selftest-tunnel
           } 2>&1 | tee /tmp/go-check.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # O log completo nao passa pelo proxy do ambiente de desenvolvimento,
+            # entao o erro vai como anotacao no resumo do job.
+            grep -nE "\.go:[0-9]+:|^--- FAIL|undefined|cannot|declared and not used|^FAIL" /tmp/go-check.log \
+              | head -25 | while IFS= read -r line; do
+                echo "::error title=Falha no Go::${line}"
+              done
+            echo "---- fim do log ----"
+            tail -40 /tmp/go-check.log
+            exit "$status"
+          fi
 
       - name: "Registrar evidencias dos testes"
         run: |
