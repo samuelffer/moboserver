@@ -217,6 +217,19 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	}
 
 	imported := worldExists(opts.World)
+	// Registro de geração: um mundo não muda de motor em silêncio.
+	policy := generationPolicy{Engine: generationEngine, Overworld: "terrain", Imported: imported, EngineVersion: appVersion}
+	if opts.Gen == "flat" {
+		policy.Overworld = "flat"
+	}
+	effective, diverged, perr := recordGenerationPolicy(generationPath(opts.DataDir), policy)
+	if perr != nil {
+		emitLog("warn", "Não foi possível registrar a política de geração: "+perr.Error())
+	} else if diverged {
+		emitLog("warn", fmt.Sprintf(
+			"Esta pasta foi gerada com \"%s\" (%s); a configuração atual pede \"%s\". Mantendo o registro anterior e sem regenerar chunks.",
+			effective.Overworld, effective.EngineVersion, policy.Overworld))
+	}
 	if imported {
 		emitLog("info", "Mundo encontrado: abrindo dados existentes...")
 	} else if opts.RequireWorld {
@@ -291,7 +304,19 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	uc.World.SaveData = true
 	uc.World.Folder = opts.World
 	uc.Players.MaxCount = opts.MaxPlayers
-	uc.Players.MaximumChunkRadius = opts.ViewDistance
+	// Mesmo intervalo do aplicativo (4..24); fora dele o valor é ajustado e o
+	// ajuste é registrado, em vez de aceitar silenciosamente.
+	view := opts.ViewDistance
+	if view < 4 {
+		view = 4
+	}
+	if view > 24 {
+		view = 24
+	}
+	if view != opts.ViewDistance {
+		emitLog("warn", fmt.Sprintf("Distância de visão %d fora de 4..24: usando %d", opts.ViewDistance, view))
+	}
+	uc.Players.MaximumChunkRadius = view
 	uc.Players.SaveData = true
 	uc.Players.Folder = opts.PlayersDir
 	uc.Resources.AutoBuildPack = false

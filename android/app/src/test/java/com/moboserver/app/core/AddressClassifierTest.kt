@@ -23,6 +23,32 @@ class AddressClassifierTest {
     }
 
     @Test
+    fun ipv4_invalido_nao_e_aceito() {
+        assertTrue(AddressClassifier.parseIpv4("192.168.0.1") != null)
+        assertFalse(AddressClassifier.isCgnat("100.64.2.256"))
+        assertFalse(AddressClassifier.isCgnat("100.64.2"))
+        assertFalse(AddressClassifier.isCgnat("100..2.1"))
+        assertFalse(AddressClassifier.isCgnat("100.64.2.-1"))
+        assertEquals(null, AddressClassifier.parseIpv4("300.1.1.1"))
+    }
+
+    @Test
+    fun cgnat_no_endereco_wan_do_roteador_e_reconhecido() {
+        // LAN privada + WAN compartilhada: é CGNAT, e o app precisa avisar.
+        val choice = AddressClassifier.classify(
+            lanIp = "192.168.1.106",
+            wanIp = "100.64.2.77",
+            publicIp = "45.160.85.157",
+            port = 19132,
+            verified = null,
+        )
+        assertTrue(choice.cgnat)
+        assertTrue(choice.status.contains("CGNAT"))
+        // O IP observado pode ser mostrado, mas como não verificado.
+        assertEquals("observado", choice.kind)
+    }
+
+    @Test
     fun cgnat_nunca_vira_endereco_para_amigos() {
         val choice = AddressClassifier.classify(
             lanIp = "100.64.2.77",

@@ -19,10 +19,16 @@ const terrainSeed = uint64(0x4D4F424F53)
 // seaLevel is the Y level at which oceans and lakes are filled with water.
 const seaLevel = int16(63)
 
-// terrain is a lightweight overworld generator. It only runs for chunks that
-// are not present in the world provider, so imported (vanilla) worlds are
-// never modified. It uses no external dependencies and generates a chunk in a
-// couple of milliseconds on a phone.
+// terrain is a lightweight overworld generator with no external dependencies
+// that builds a chunk in a couple of milliseconds on a phone.
+//
+// Importante: mundos importados NÃO ficam intocados. Este gerador só é chamado
+// para chunks que ainda não existem no provedor do mundo — ou seja, cada área
+// nova explorada num mundo importado é gerada por aqui, com seed fixa, bioma
+// Plains e sem estruturas/cavernas/entidades do gerador vanilla. O arquivo
+// original importado é preservado pelo aplicativo, mas a cópia de trabalho
+// cresce com chunks deste gerador. Reabrir o mundo no Minecraft não regera
+// essas regiões.
 type terrain struct {
 	once sync.Once
 

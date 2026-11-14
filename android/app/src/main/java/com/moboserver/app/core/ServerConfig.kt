@@ -8,6 +8,11 @@ package com.moboserver.app.core
  * Este arquivo é Kotlin puro (sem Android) de propósito: a mesclagem de campos e
  * a seleção de mundo são testadas na JVM, sem aparelho.
  */
+/** Intervalo único da distância de visão (UI, persistência e servidor). */
+const val VIEW_DISTANCE_MIN = 4
+const val VIEW_DISTANCE_MAX = 24
+const val VIEW_DISTANCE_DEFAULT = 8
+
 data class ServerConfig(
     val serverName: String = "MoboServer",
     val port: Int = 19132,
@@ -15,7 +20,7 @@ data class ServerConfig(
     val authEnabled: Boolean = true,
     val gameMode: String = "survival",
     val difficulty: String = "normal",
-    val viewDistance: Int = 8,
+    val viewDistance: Int = VIEW_DISTANCE_DEFAULT,
     val generator: String = "terrain",
     val autoForward: Boolean = true,
     val activeWorldId: String = "",

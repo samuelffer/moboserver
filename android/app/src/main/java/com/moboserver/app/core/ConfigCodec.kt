@@ -49,7 +49,8 @@ object ConfigCodec {
             authEnabled = o.readBool("authEnabled", defaults.authEnabled),
             gameMode = o.readString("gameMode", defaults.gameMode).ifBlank { defaults.gameMode },
             difficulty = o.readString("difficulty", defaults.difficulty).ifBlank { defaults.difficulty },
-            viewDistance = o.readInt("viewDistance", defaults.viewDistance).coerceIn(4, 24),
+            viewDistance = o.readInt("viewDistance", defaults.viewDistance)
+                .coerceIn(VIEW_DISTANCE_MIN, VIEW_DISTANCE_MAX),
             generator = o.readString("generator", defaults.generator).ifBlank { defaults.generator },
             autoForward = o.readBool("autoForward", defaults.autoForward),
             // O campo que interessa para "o servidor abriu sem mundo": ele nunca

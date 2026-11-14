@@ -49,7 +49,14 @@ object Upnp {
             for (service in services) {
                 val externalIp = externalIp(service)
                 if (addPortMapping(service, port, localIp)) {
-                    val extra = externalIp?.let { " IP público: $it." } ?: ""
+                    // O endereço informado pelo roteador pode ser CGNAT (100.64/10):
+                    // nesse caso não é um IP público e não deve ser chamado assim.
+                    val extra = when {
+                        externalIp == null -> ""
+                        AddressClassifier.isCgnat(externalIp) ->
+                            " O roteador informa $externalIp, que é um endereço compartilhado da operadora (CGNAT), não um IP público."
+                        else -> " Endereço informado pelo roteador: $externalIp (não confirma acesso externo)."
+                    }
                     return UpnpResult(true, "Porta $port/UDP liberada no roteador automaticamente.$extra", externalIp)
                 }
             }

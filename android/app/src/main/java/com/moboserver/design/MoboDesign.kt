@@ -723,18 +723,20 @@ private fun Tool(
             steps = 3,
             colors = moboSliderColors(),
         )
-        Rule(); var view by remember(s.viewDistance) { mutableFloatStateOf(s.viewDistance.toFloat().coerceIn(4f, 16f)) }
+        Rule(); var view by remember(s.viewDistance) { mutableFloatStateOf(s.viewDistance.toFloat().coerceIn(4f, 24f)) }
         Entry(Icons.Outlined.Visibility, "Distância de visão", "${view.toInt()} chunks")
         Slider(
             value = view,
             onValueChange = { view = it },
             onValueChangeFinished = { a.setViewDistance(view.toInt()) },
-            valueRange = 4f..16f,
-            steps = 11,
+            // 4..24 com passo inteiro: 19 posições intermediárias.
+            valueRange = 4f..24f,
+            steps = 19,
             colors = moboSliderColors(),
         )
     }
-    Note("Valores menores aliviam o celular."); Gap()
+    Note("Distância de visão: quanto maior, mais chunks o celular precisa manter carregados. " +
+        "Ela não muda a geração do mundo nem a distância de simulação."); Gap()
     Group { Entry(Icons.Outlined.SportsEsports, "Jogo", onClick = a::gameSettings); Rule(); Entry(Icons.Outlined.DarkMode, "Aparência", onClick = a::changeAppearance); Rule(); Entry(Icons.Outlined.Tune, "Avançado", onClick = a::advancedSettings) }
 }
 
