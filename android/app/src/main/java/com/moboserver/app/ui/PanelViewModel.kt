@@ -793,6 +793,20 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
         Store.update(block)
     }
 
+    /** Pede ao servidor para salvar agora; o horário só aparece com o evento de confirmação. */
+    fun saveWorld() {
+        ServerController.saveWorld()
+        showMessage("Pedido de salvamento enviado ao servidor.")
+    }
+
+    /** Roda `mobosrv -version`: confirma que o binário embutido executa neste aparelho. */
+    fun testBinary() {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { Diagnostics.testBinary(context) }
+            openDialog(PanelDialog.Text("Teste do binário do servidor", result))
+        }
+    }
+
     fun checkExternalAccess() {
         ServerController.checkExternalAccess()
     }
