@@ -34,6 +34,86 @@ processo nativo do próprio app:
 * **Segundo plano**: serviço em primeiro plano + wake lock + Wi-Fi lock, com notificação
   permanente mostrando jogadores e porta.
 
+## Correções da versão 1.4.3
+
+### Cabeça da skin dos jogadores
+
+O traço silencioso saiu: cada jogador agora tem **estado explícito** (`carregando`,
+`disponível`, `formato não suportado`, `falha`) com ícone neutro de pessoa e motivo acessível
+ao toque (detalhes do jogador).
+
+* **Geometria de verdade**: `server/avatar.go` deixou de procurar palavras no JSON. O modelo
+  (`skin.Model`) é decodificado e a geometria escolhida é a indicada por `ModelConfig.Default`;
+  o cubo do boneco `head` fornece a UV do rosto (`uv + profundidade`) e o cubo com
+  `inflate > 0` a camada externa. `texture_width/height` define a escala (64 ou 128).
+  Sem cubo de cabeça, só o identificador `geometry.humanoid*` autoriza as UVs fixas.
+* **Persona e geometria própria**: nada de recortar coordenadas fixas. Se o modelo traz a
+  cabeça, a renderização é determinística pelo cubo; se não traz, o motivo é específico
+  (“skin Persona: o cliente não envia a geometria…”, “geometria personalizada sem cubo de
+  cabeça com UV”).
+* **Limites** de complexidade: modelo ≤ 96 KB, ≤ 512 bonecos, ≤ 4096 cubos; `len(Pix)` conferido
+  antes de recortar.
+* **Entrega dos eventos**: o servidor ganhou o comando `avatar` (reenvio sob demanda); o app pede
+  reenvio quando um jogador aparece sem imagem (no máximo 1 vez a cada 10 s por jogador) e cada
+  evento carrega `rev`, usado para descartar imagem antiga que decodificou depois de uma troca de
+  skin. A verificação de sessão acontece **antes** do branch “indisponível”.
+* **Diagnóstico exportável** (`Compartilhar diagnóstico`): sessão, chave estável (XUID),
+  `persona`, dimensões da textura, bytes de pixel, bytes do modelo, identificador da geometria,
+  se havia cubo de cabeça, layout, resultado, hash e motivo. Sem PNG, base64, tokens ou a skin.
+* **RTT**: `-1` é a única sentinela de “sem medição”; **0 ms é medição válida** (<1 ms) e não é
+  mais descartado (Go e Android).
+
+### Navegação e botão Voltar
+
+* A página do painel é estado do app (`MoboPanel(page, onPageChange)`), restaurável.
+* `BackHandler` com prioridade: diálogo → subpágina Avançado → aba Jogadores → saída da Activity.
+* O “‹ Voltar” da tela executa a mesma função do botão do Android.
+* Sair da Activity não desliga o servidor (ele vive no foreground service).
+
+### Abertura e transições
+
+* `SplashScreen` compat com o ícone real e fundo coerente (claro/escuro).
+* A abertura espera apenas a primeira leitura de dados (`UiReadiness.ready`): nenhum `sleep`,
+  nenhuma segunda Activity de carregamento.
+* Troca de aba com fade + 6 dp em 200 ms, respeitando a escala de animação do sistema (0 = sem
+  animação). Modais e subpáginas são sobreposições: a rolagem da tela anterior é preservada.
+
+### Console
+
+* Controle segmentado **Registros / Chat**; o campo de envio existe só no Chat.
+* Registros são objetos (`horário`, `nível`, `mensagem`) em `LazyColumn` com chaves estáveis,
+  filtros Todos/Avisos/Erros, quebra de linha, acompanhamento automático do fim só quando o
+  usuário já está nele e aviso “Novos registros”.
+* Copiar, exportar e limpar afetam só a visualização (o servidor e o log em disco continuam).
+* Chat estruturado: `HandleChat` do Dragonfly gera evento próprio; `say` do painel só vira
+  “enviada” com `chat_sent`; sem confirmação em 6 s fica “não enviada” e o texto permanece no
+  campo. Nenhuma linha de log é tratada como mensagem de jogador.
+
+### Cartão inicial e endereços
+
+* Saiu o ping agregado do cartão; ficaram nome do mundo, estado real, tempo ativo, **último
+  salvamento confirmado** (`saved`, emitido só depois de gravar) e modo/dificuldade.
+* Conexão destaca “Endereço para jogar pela internet” com copiar/compartilhar; rede local e porta
+  aparecem como itens secundários.
+* `core/AddressClassifier.kt` (Kotlin puro, com testes de JVM) classifica: **verificado** (teste
+  externo real), **IP observado** por STUN (“Acesso não verificado”), **WAN do roteador** (UPnP)
+  e **rede local**. `100.64.0.0/10` (CGNAT) nunca é oferecido a amigos.
+* “Verificar acesso” dispara STUN/UPnP/teste externo; nada de sucesso baseado em HTTP localhost,
+  STUN ou aceite do roteador.
+
+### Ícone
+
+* Ícone gerado do PNG real do repositório (`arquivos/icon_moboserver.png`, 1254×1254) por
+  `scripts/make-launcher-icons.py`: `mipmap-*` (48…192 px), camada adaptativa de 108 dp com a
+  arte em 66% (área segura) e `ic_launcher_round` circular. A arte não é recortada na origem.
+* O caminho de origem fica documentado no script para futuras substituições.
+
+### Ainda falta validar no aparelho
+
+* Skin real de um jogador que entra (o motivo aparece no painel e no diagnóstico exportado).
+* Capturas do Voltar e da separação Registros/Chat (o build de depuração abre o painel com dados
+  fictícios em `DemoActivity`, sem iniciar servidor).
+
 ## Interface da versão 1.4.2
 
 A interface foi refeita com o kit visual de `compose/MoboDesign.kt` (o mesmo de `reference.png`)
@@ -120,9 +200,9 @@ e agora está ligada aos dados e às ações reais do aplicativo. `compose/DemoA
 
 | Arquivo | Tamanho | SHA-256 |
 | --- | --- | --- |
-| [`releases_apk/MoboServer-v1.4.2-android-arm64.zip`](releases_apk/MoboServer-v1.4.2-android-arm64.zip) | 18,8 MB | `4d5ac61dadd9bddafa1bbb8b7610b848b2ba1b7c0358249461d25a50339e42a2` |
+| [`releases_apk/MoboServer-v1.4.3-android-arm64.zip`](releases_apk/MoboServer-v1.4.3-android-arm64.zip) | ~19 MB | *(preenchido pelo build)* |
 
-O ZIP contém `MoboServer-v1.4.2.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
+O ZIP contém `MoboServer-v1.4.3.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
 (`apksigner verify` roda no CI) e as próximas versões instalam por cima desta.
 
 ## Instalação
@@ -131,7 +211,7 @@ Copie o APK do ZIP para o celular e abra o arquivo — o Android vai pedir permi
 instalar apps de fontes desconhecidas. Para conferir o download, compare o SHA-256 acima:
 
 ```bash
-sha256sum MoboServer-v1.4.2-android-arm64.zip
+sha256sum MoboServer-v1.4.3-android-arm64.zip
 ```
 
 ## Quem consegue entrar
@@ -302,6 +382,18 @@ a mensagem de erro do servidor.
 * Testes novos: interfaces injetadas, coleta de ICE pela lista injetada, SDP,
   faixa de portas e chave P-384. O self-test falha se a sinalização ou o ICE não
   funcionarem.
+
+### 1.4.3
+
+* Avatar: geometria interpretada (cubo da cabeça + camada externa), motivo visível por jogador,
+  reenvio sob demanda, revisão contra imagem antiga e diagnóstico exportável sem imagem.
+* Voltar do Android e “‹ Voltar” com a mesma pilha (diálogo → Avançado → Jogadores → saída).
+* SplashScreen compat e transições curtas respeitando a escala de animação do sistema.
+* Console com Registros/Chat separados, filtros, LazyColumn, exportação de registros e estados
+  enviando/falha no chat.
+* Cartão inicial sem ping agregado, com último salvamento confirmado; endereços classificados
+  (verificado / observado / WAN / LAN) e CGNAT fora do endereço público.
+* Ícone real do repositório gerado para todas as densidades + ícone adaptativo.
 
 ### 1.4.2
 
