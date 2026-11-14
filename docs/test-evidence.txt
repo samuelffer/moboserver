@@ -1,9 +1,9 @@
 MoboServer - evidencias automatizadas do ultimo build verde
-Commit: 20e268c4afcd32fca86578959666737c80f8fee2
-Data: 2026-11-13T23:48:53Z
+Commit: 4cde7434a75225becf8a32bee7d66a382385b8b1
+Data: 2026-11-14T00:00:33Z
 
-ok  	github.com/samuelffer/moboserver/server	0.119s
-ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.238s
+ok  	github.com/samuelffer/moboserver/server	0.124s
+ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.237s
 --- PASS: TestAvatarFaceCrop (0.00s)
 --- PASS: TestAvatarOuterLayerOverlay (0.00s)
 --- PASS: TestAvatarSemiTransparentOverlay (0.00s)
@@ -21,46 +21,54 @@ ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.238s
     --- PASS: TestValidateWorldCodes/db_vazio (0.00s)
     --- PASS: TestValidateWorldCodes/mundo_valido_com_tag_extra (0.00s)
 --- PASS: TestNbtSkipRejectsTruncated (0.00s)
-ok  	github.com/samuelffer/moboserver/server	0.114s
+ok  	github.com/samuelffer/moboserver/server	0.121s
 {"lvl":"info","msg":"Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em \u003c1 ms (nome \"MoboSelfTest\", protocolo 2225)","t":"log"}
-{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.21, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.21/20, eth0/fe80::7eed:8dff:fe7b:22be/64)","t":"log"}
+{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.95, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.95/20, eth0/fe80::72a8:a5ff:fe25:7c8/64)","t":"log"}
 selftest: surface block at spawn: block.Grass
 selftest: sinalizacao NetherNet ok em TCP 19132 (GET /v1/join 200, nome "MoboSelfTest", protocolo 2225)
-selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.21, 172.17.0.1)
+selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.95, 172.17.0.1)
 SELFTEST OK
 {"lvl":"info","msg":"Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em \u003c1 ms (nome \"MoboSelfTest\", protocolo 2225)","t":"log"}
-{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.21, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.21/20, eth0/fe80::7eed:8dff:fe7b:22be/64)","t":"log"}
+{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.95, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.95/20, eth0/fe80::72a8:a5ff:fe25:7c8/64)","t":"log"}
 selftest: surface block at spawn: block.Grass
 selftest: sinalizacao NetherNet ok em TCP 19555 (GET /v1/join 200, nome "MoboSelfTest", protocolo 2225)
-selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.21, 172.17.0.1)
+selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.95, 172.17.0.1)
 SELFTEST OK
 {"lvl":"info","msg":"Listener RakNet ativo: UDP :19134 (compatibilidade e descoberta na rede local)","t":"log"}
 {"lvl":"info","msg":"Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em \u003c1 ms (nome \"MoboSelfTest\", protocolo 2225)","t":"log"}
-{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.21, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.21/20, eth0/fe80::7eed:8dff:fe7b:22be/64)","t":"log"}
+{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.95, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.95/20, eth0/fe80::72a8:a5ff:fe25:7c8/64)","t":"log"}
 selftest: surface block at spawn: block.Grass
-selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;2804371865789378671;;Survival;1;19134;19134;0;0;
-selftest: interface eth0 (10.1.0.21) respondeu no ping
+selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;2697049169231667012;;Survival;1;19134;19134;0;0;
+selftest: interface eth0 (10.1.0.95) respondeu no ping
 selftest: sinalizacao NetherNet ok em TCP 19134 (GET /v1/join 200, nome "MoboSelfTest", protocolo 2225)
-selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.21, 172.17.0.1)
+selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.95, 172.17.0.1)
 SELFTEST OK
 {"lvl":"info","msg":"Listener RakNet ativo: UDP :19136 (compatibilidade e descoberta na rede local)","t":"log"}
 {"lvl":"info","msg":"Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em \u003c1 ms (nome \"MoboSelfTest\", protocolo 2225)","t":"log"}
-{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.21, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.21/20, eth0/fe80::7eed:8dff:fe7b:22be/64)","t":"log"}
+{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.95, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.95/20, eth0/fe80::72a8:a5ff:fe25:7c8/64)","t":"log"}
 selftest: surface block at spawn: block.Grass
-selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;6729563103594609977;;Survival;1;19136;19136;0;0;
-selftest: interface eth0 (10.1.0.21) respondeu no ping
+selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;5712480597349514795;;Survival;1;19136;19136;0;0;
+selftest: interface eth0 (10.1.0.95) respondeu no ping
 selftest: sinalizacao NetherNet ok em TCP 19136 (GET /v1/join 200, nome "MoboSelfTest", protocolo 2225)
-selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.21, 172.17.0.1)
-selftest: tunel ok, porta publica 60608 respondeu ao ping RakNet
+selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.95, 172.17.0.1)
+selftest: tunel ok, porta publica 47888 respondeu ao ping RakNet
 SELFTEST OK
 
 == Testes de JVM do app (selecao de mundo / mesclagem de configuracao) ==
-com.moboserver.app.core.WorldSelectionTest: 13 teste(s), 0 falha(s), 0 erro(s)
+com.moboserver.app.core.ConfigCodecTest: 6 teste(s), 0 falha(s), 0 erro(s)
+  - json corrompido devolve padroes sem quebrar
+  - campo com tipo errado nao apaga a selecao
+  - ida e volta preserva o mundo selecionado
+  - json antigo sem campos novos usa padroes
+  - porta fora da faixa e corrigida sem perder o mundo
+  - espacos em volta do id sao removidos
+com.moboserver.app.core.WorldSelectionTest: 14 teste(s), 0 falha(s), 0 erro(s)
   - selecao sobrevive a atualizacao de campo isolado
   - pasta sem level_dat nem db e estrutura invalida
   - id salvo sem pasta e um motivo diferente
   - excluir o mundo selecionado limpa a selecao
   - excluir A nao apaga a selecao de B
+  - iniciar durante a importacao tem mensagem propria
   - servidor em execucao bloqueia troca de mundo
   - db vazio tambem e estrutura invalida
   - codigos do validador viram mensagens especificas
