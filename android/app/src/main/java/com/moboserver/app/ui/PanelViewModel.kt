@@ -130,6 +130,7 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
     private val thumbnails = mutableMapOf<String, Thumb>()
     private var lanIp: String? = null
     private var lanIpJob: Job? = null
+    private var worldsJob: Job? = null
     private var lastLogCount = -1
     private var lastLogsText = ""
 
@@ -324,8 +325,13 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * O estado do servidor muda a cada linha de log; sem esta guarda cada
+     * linha agendaria uma varredura de pastas. Só uma por vez.
+     */
     private fun refreshWorldsSoon() {
-        viewModelScope.launch {
+        if (worldsJob?.isActive == true) return
+        worldsJob = viewModelScope.launch {
             delay(400)
             refreshWorlds()
         }
