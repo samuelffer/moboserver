@@ -208,7 +208,7 @@ func geometryJSON(identifier string, textureWidth float64, cubes ...string) []by
 	))
 }
 
-func cube(uvX, uvY float64, size, inflate float64) string {
+func avatarCube(uvX, uvY float64, size, inflate float64) string {
 	return fmt.Sprintf(`{"origin":[-4,24,-4],"size":[%g,%g,%g],"uv":[%g,%g],"inflate":%g}`,
 		size, size, size, uvX, uvY, inflate)
 }
@@ -219,7 +219,7 @@ func TestAvatarGeometryHeadCube(t *testing.T) {
 	s := skin.New(64, 64)
 	face := color.RGBA{R: 12, G: 34, B: 56, A: 255}
 	fillSkin(&s, 8, 8, 8, face)
-	s.Model = geometryJSON("geometry.humanoid.customSlim", 64, cube(0, 0, 8, 0))
+	s.Model = geometryJSON("geometry.humanoid.customSlim", 64, avatarCube(0, 0, 8, 0))
 	s.ModelConfig.Default = "geometry.humanoid.customSlim"
 
 	res := renderAvatar(s)
@@ -241,8 +241,8 @@ func TestAvatarGeometryHatOverlay(t *testing.T) {
 	fillSkin(&s, 8, 8, 8, color.RGBA{R: 0, G: 0, B: 255, A: 255})
 	fillSkin(&s, 40, 8, 8, color.RGBA{R: 255, G: 0, B: 0, A: 255})
 	s.Model = geometryJSON("geometry.humanoid.custom", 64,
-		cube(0, 0, 8, 0),
-		cube(32, 0, 8, 0.5),
+		avatarCube(0, 0, 8, 0),
+		avatarCube(32, 0, 8, 0.5),
 	)
 	got := rgbaAt(decodeAvatar(t, renderAvatar(s)), 0, 0)
 	if got.R != 255 || got.B != 0 {
@@ -256,7 +256,7 @@ func TestAvatarGeometryDoubled128(t *testing.T) {
 	face := color.RGBA{R: 1, G: 2, B: 3, A: 255}
 	fillSkin(&s, 16, 16, 16, face)
 	// Geometria no espaço 64x64 sobre textura 128: as UVs dobram.
-	s.Model = geometryJSON("geometry.humanoid.custom", 64, cube(0, 0, 8, 0))
+	s.Model = geometryJSON("geometry.humanoid.custom", 64, avatarCube(0, 0, 8, 0))
 	res := renderAvatar(s)
 	got := rgbaAt(decodeAvatar(t, res), 0, 0)
 	if got.R != face.R {
@@ -285,7 +285,7 @@ func TestAvatarPersonaWithGeometry(t *testing.T) {
 	withGeometry := skin.New(64, 64)
 	withGeometry.Persona = true
 	fillSkin(&withGeometry, 8, 8, 8, color.RGBA{R: 200, G: 100, B: 50, A: 255})
-	withGeometry.Model = geometryJSON("persona.head", 64, cube(0, 0, 8, 0))
+	withGeometry.Model = geometryJSON("persona.head", 64, avatarCube(0, 0, 8, 0))
 	res := renderAvatar(withGeometry)
 	if !res.Available {
 		t.Fatalf("persona com cubo de cabeça deveria renderizar: %s", res.Reason)
