@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.moboserver.design.AvatarStateUi
 import com.moboserver.design.MoboPanel
+import com.moboserver.design.MoboUiTheme
 import com.moboserver.design.Page
 import com.moboserver.design.Phase
 import com.moboserver.design.moboPalette
@@ -121,6 +122,8 @@ fun AppRoot() {
         enabled = extras.dialog == null && !extras.advancedOpen && page == Page.Players,
     ) { goHome() }
 
+    // Tema único (paleta aprovada + Inter) para o painel, subpáginas e diálogos.
+    MoboUiTheme(dark) {
     Box(Modifier.fillMaxSize().background(palette.bg)) {
         MoboPanel(
             state = panel,
@@ -256,6 +259,7 @@ fun AppRoot() {
                 )
             }
         }
+    }
     }
 }
 

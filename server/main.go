@@ -54,6 +54,9 @@ type options struct {
 	AllowOpen      bool
 	NetherNet      bool
 	NetherNetPorts string
+	// NetherNetPublicIP anuncia candidatos ICE com o IP publico do operador.
+	// So faz sentido com mapeamento 1:1 das mesmas portas na VPS.
+	NetherNetPublicIP string
 	// RakNet liga o transporte antigo (UDP 19132 + descoberta na rede local).
 	// Fica desligado por padrao: o caminho validado com o Bedrock 26.63 e o
 	// NetherNet. A descoberta automatica na aba LAN depende dele.
@@ -103,6 +106,8 @@ func parseFlags() options {
 		"validate a world folder, fix level.dat metadata and print the result as JSON, then exit")
 	flag.StringVar(&o.NetherNetPorts, "nethernet-ports", "19133-19140",
 		"UDP ports used by NetherNet player connections")
+	flag.StringVar(&o.NetherNetPublicIP, "nethernet-public-ip", "",
+		"public IPv4 announced in ICE candidates (requires 1:1 port mapping with the same numbers)")
 	flag.StringVar(&o.IfaceFile, "ifaces", "",
 		"JSON file with the interface list written by the Android app "+
 			"(netlink is blocked for apps on Android, so ICE cannot enumerate interfaces itself)")
@@ -339,6 +344,7 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 				Domain:         "self",
 				UDPPortsMin:    udpMin,
 				UDPPortsMax:    udpMax,
+				PublicIP:       opts.NetherNetPublicIP,
 				AllowAnonymous: c.AuthDisabled,
 				Network:        iceNet,
 				Log:            log,

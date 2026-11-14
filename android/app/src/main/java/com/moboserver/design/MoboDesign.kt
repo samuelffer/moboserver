@@ -157,8 +157,8 @@ interface PanelActions {
 }
 
 private data class Palette(val bg: Color, val card: Color, val ink: Color, val muted: Color, val green: Color, val soft: Color, val line: Color)
-private val Light = Palette(Color(0xFFF5F6F3), Color.White, Color(0xFF111311), Color(0xFF60645F), Color(0xFF106B32), Color(0xFFE9F0E1), Color(0xFFECEEE9))
-private val Dark = Palette(Color(0xFF151916), Color(0xFF202622), Color(0xFFF4F6F1), Color(0xFFAEB8AE), Color(0xFF80D99A), Color(0xFF293C2D), Color(0xFF343C36))
+private val Light = Palette(Color(0xFFF2F3F5), Color.White, Color(0xFF18201C), Color(0xFF747D78), Color(0xFF147D45), Color(0xFFE8F3EB), Color(0xFFE9ECEA))
+private val Dark = Palette(Color(0xFF101512), Color(0xFF1B231E), Color(0xFFF3F6F3), Color(0xFFA2ADA6), Color(0xFF86DCA6), Color(0xFF253A2B), Color(0xFF2C3630))
 private val LocalPalette = staticCompositionLocalOf { Light }
 private val C: Palette @Composable get() = LocalPalette.current
 
@@ -197,15 +197,7 @@ fun MoboPanel(
     fun go(target: Page) {
         if (onPageChange != null) onPageChange(target) else internalPage = target
     }
-    val palette = if (dark) Dark else Light
-    CompositionLocalProvider(LocalPalette provides palette) {
-        MaterialTheme(
-            colorScheme = if (dark) {
-                darkColorScheme(primary = palette.green, background = palette.bg, surface = palette.card, onSurface = palette.ink)
-            } else {
-                lightColorScheme(primary = palette.green, background = palette.bg, surface = palette.card, onSurface = palette.ink)
-            },
-        ) {
+    MoboUiTheme(dark) {
             Column(Modifier.fillMaxSize().background(C.bg).safeDrawingPadding().imePadding()) {
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
                     Spacer(Modifier.height(20.dp))
@@ -233,7 +225,6 @@ fun MoboPanel(
                 BottomBar(if (current == Page.Players) Page.Home else current) { go(it) }
             }
         }
-    }
 }
 
 /** Duração (ms) coerente com a escala de animação do sistema. */
@@ -250,10 +241,47 @@ private fun motionDuration(): Int {
     return if (scale <= 0f) 0 else 200
 }
 
+/**
+ * Tema único do aplicativo: paleta aprovada (clara/escura) + família Inter.
+ * Não usa cores dinâmicas: a paleta do design é fixa.
+ */
+@Composable
+fun MoboUiTheme(dark: Boolean, content: @Composable () -> Unit) {
+    val palette = if (dark) Dark else Light
+    CompositionLocalProvider(LocalPalette provides palette) {
+        MaterialTheme(
+            typography = MoboTypography,
+            colorScheme = if (dark) {
+                darkColorScheme(
+                    primary = palette.green,
+                    background = palette.bg,
+                    surface = palette.card,
+                    onSurface = palette.ink,
+                )
+            } else {
+                lightColorScheme(
+                    primary = palette.green,
+                    background = palette.bg,
+                    surface = palette.card,
+                    onSurface = palette.ink,
+                )
+            },
+            content = content,
+        )
+    }
+}
+
 @Composable private fun Heading(title: String, subtitle: String = "", brand: Boolean = false) {
     Column(Modifier.padding(start = 10.dp, end = 10.dp, bottom = 24.dp)) {
-        if (brand) Text("MoboServer", color = C.green, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Text(title, fontSize = 40.sp, lineHeight = 44.sp, letterSpacing = (-1.6).sp, fontWeight = FontWeight.Bold, color = C.ink)
+        if (brand) Text("MoboServer", color = C.green, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            title,
+            fontSize = 34.sp,
+            lineHeight = 41.sp,
+            letterSpacing = (-1.25).sp,
+            fontWeight = FontWeight.Bold,
+            color = C.ink,
+        )
         if (subtitle.isNotEmpty()) Text(subtitle, color = C.muted, fontSize = 16.sp, modifier = Modifier.padding(top = 6.dp))
     }
 }

@@ -52,6 +52,11 @@ type netherNetOptions struct {
 	Domain         string
 	UDPPortsMin    uint16
 	UDPPortsMax    uint16
+	// PublicIP, quando preenchido, faz o ICE anunciar candidatos com este
+	// endereco (o da VPS com mapeamento 1:1 de portas) em vez do IP local.
+	// Sem mapeamento 1:1 nao use: o candidato publicado precisa chegar ao
+	// celular na mesma porta.
+	PublicIP       string
 	AllowAnonymous bool
 	Network        transport.Net
 	Log            *slog.Logger
@@ -75,6 +80,15 @@ func startNetherNet(conf server.Config, opts netherNetOptions) (server.Listener,
 	// interfaces do Android; sem isto o agente ICE chama stdnet.NewNet() e falha
 	// com netlinkrib: permission denied no aparelho.
 	settingEngine.SetNet(opts.Network)
+	if opts.PublicIP != "" {
+		// API disponivel no pion/webrtc v4.2.21 (go.sum). Reescreve apenas os
+		// candidatos host; a porta anunciada e a porta real do socket, por isso
+		// o mapeamento publico precisa manter os mesmos numeros.
+		if err := settingEngine.SetNAT1To1IPs([]string{opts.PublicIP}, webrtc.ICECandidateTypeHost); err != nil {
+			return nil, fmt.Errorf("anunciar IP publico no ICE: %w", err)
+		}
+		log.Info("ICE vai anunciar um IP publico.", "ip", opts.PublicIP)
+	}
 	var mux ice.UDPMux
 	if opts.UDPPortsMin != 0 && opts.UDPPortsMin == opts.UDPPortsMax {
 		mux, err = ice.NewMultiUDPMuxFromPort(int(opts.UDPPortsMin))
