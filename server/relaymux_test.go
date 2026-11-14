@@ -15,12 +15,12 @@ func TestRelayMuxAtribuiPortasUnicas(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 
-	relay := &tunnel.UDPRelay{Listen: "127.0.0.1:0", MaxPorts: 4}
+	relay := &tunnel.UDPRelay{Listen: "127.0.0.1:0", MaxPorts: 4, Log: t.Logf}
 	ready := make(chan string, 1)
 	go func() { _ = relay.ListenAndServe(ctx, func(control string) { ready <- control }) }()
 	control := <-ready
 
-	client := &tunnel.UDPClient{RelayAddr: control, Ports: 2}
+	client := &tunnel.UDPClient{RelayAddr: control, Ports: 2, Log: t.Logf}
 	assigned := make(chan []int, 1)
 	client.OnReady = func(ports []int) { assigned <- ports }
 	go client.Run(ctx)
@@ -29,7 +29,7 @@ func TestRelayMuxAtribuiPortasUnicas(t *testing.T) {
 	select {
 	case ports = <-assigned:
 	case <-ctx.Done():
-		t.Fatal("sem portas do relay")
+		t.Fatalf("sem portas do relay (controle %s, portas %v)", control, client.AssignedPorts())
 	}
 
 	publicIP := net.ParseIP("203.0.113.10")
@@ -97,7 +97,7 @@ func TestRelayMuxEntregaDatagramas(t *testing.T) {
 	select {
 	case ports = <-assigned:
 	case <-ctx.Done():
-		t.Fatal("sem portas do relay")
+		t.Fatalf("sem portas do relay (controle %s, portas %v)", control, client.AssignedPorts())
 	}
 
 	mux := newRelayUDPMux(client, net.ParseIP("203.0.113.10"))
