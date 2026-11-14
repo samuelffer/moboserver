@@ -27,7 +27,7 @@
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.MoboServer"
+            android:theme="@style/Theme.MoboServer.Splash"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

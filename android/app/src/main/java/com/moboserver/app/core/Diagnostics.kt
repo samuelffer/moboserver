@@ -56,6 +56,22 @@ object Diagnostics {
         for (line in ServerController.selectionDiagnostics()) {
             appendLine(line)
         }
+        appendLine()
+        appendLine("-- Avatares (skin da sessao) --")
+        for (line in ServerController.avatarDiagnostics()) {
+            appendLine(line)
+        }
+        appendLine()
+        appendLine("-- Chat e salvamento --")
+        appendLine("Mensagens no chat: ${state.chat.size}")
+        appendLine(
+            "Ultimo salvamento confirmado: " +
+                if (state.lastSaveAt > 0) {
+                    java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(state.lastSaveAt))
+                } else {
+                    "nenhum evento de salvamento nesta sessao"
+                },
+        )
         val lan = Net.lanIp()
         appendLine()
         appendLine("-- Rede --")

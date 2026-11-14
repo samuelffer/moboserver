@@ -37,6 +37,11 @@ object ServerController {
     private const val START_TIMEOUT_MS = 60_000L
     private const val STOP_TIMEOUT_MS = 60_000L
     private const val FORCE_KILL_GRACE_MS = 4_000L
+    /** Intervalo mínimo entre dois pedidos de reenvio de avatar do mesmo jogador. */
+    private const val AVATAR_REQUEST_INTERVAL_MS = 10_000L
+    /** Espera máxima pela confirmação de uma mensagem de chat do painel. */
+    private const val CHAT_CONFIRM_TIMEOUT_MS = 6_000L
+    private const val MAX_CHAT_MESSAGES = 400
 
     /** One run of the server process, from "prepare" until the process exits. */
     private class Session(val id: Long) {
@@ -369,11 +374,50 @@ object ServerController {
         }
     }
 
+    /**
+     * Envia uma mensagem do painel. Ela só vira "enviada" quando o servidor
+     * confirma com "chat_sent"; se a confirmação não chegar, o estado vira
+     * falha e o texto continua na interface (nada é apagado).
+     */
     fun say(message: String) {
         val text = message.trim()
         if (text.isEmpty()) return
-        sendCommand(command("say").put("msg", text))
+        val seq = chatSeq.incrementAndGet()
+        val serverId = seq.toString()
+        val sent = sendCommand(command("say", serverId).put("msg", text))
+        val entry = ChatMessage(
+            id = seq,
+            at = System.currentTimeMillis(),
+            from = "Painel",
+            text = text,
+            fromPanel = true,
+            status = if (sent) ChatStatus.PENDING else ChatStatus.FAILED,
+        )
+        if (sent) synchronized(pendingChat) { pendingChat[serverId] = seq }
+        _state.update { st -> st.copy(chat = (st.chat + entry).takeLast(MAX_CHAT_MESSAGES)) }
+        if (!sent) return
+        scope.launch {
+            delay(CHAT_CONFIRM_TIMEOUT_MS)
+            val stillPending = synchronized(pendingChat) { pendingChat.remove(serverId) != null }
+            if (stillPending) {
+                _state.update { st ->
+                    st.copy(
+                        chat = st.chat.map {
+                            if (it.id == seq && it.status == ChatStatus.PENDING) {
+                                it.copy(status = ChatStatus.FAILED)
+                            } else {
+                                it
+                            }
+                        },
+                    )
+                }
+            }
+        }
     }
+
+    private val chatSeq = java.util.concurrent.atomic.AtomicLong(0)
+    private val pendingChat = HashMap<String, Long>()
+
 
     fun unban(xuid: String) {
         if (xuid.isBlank()) return
@@ -721,9 +765,52 @@ object ServerController {
                         pingHistory = recordPings(st.pingHistory, online),
                     )
                 }
+                // Consumidor sem imagem (evento perdido ou app aberto depois do
+                // join) pede o reenvio; o limite por jogador evita inundar o
+                // processo e o PNG não vai em todo tick.
+                event.players.forEach { player ->
+                    val avatar = _state.value.avatars[player.key]
+                    if (avatar == null || (!avatar.available && avatar.state == AvatarState.LOADING)) {
+                        requestAvatar(player.name)
+                    }
+                }
             }
 
             is ServerEvent.PlayerAvatar -> decodeAvatar(s, event)
+
+            is ServerEvent.Chat -> {
+                if (s.avatarSession == 0L) s.avatarSession = event.session
+                if (event.session != 0L && s.avatarSession != 0L && event.session != s.avatarSession) return
+                _state.update { st ->
+                    st.copy(
+                        chat = (st.chat + ChatMessage(
+                            id = System.nanoTime(),
+                            at = System.currentTimeMillis(),
+                            from = event.from,
+                            text = event.msg,
+                            status = ChatStatus.SENT,
+                        )).takeLast(MAX_CHAT_MESSAGES),
+                    )
+                }
+            }
+
+            is ServerEvent.ChatSent -> {
+                val messageId = synchronized(pendingChat) { pendingChat.remove(event.id) }
+                if (messageId != null) {
+                    val status = if (event.ok) ChatStatus.SENT else ChatStatus.FAILED
+                    _state.update { st ->
+                        st.copy(
+                            chat = st.chat.map { message ->
+                                if (message.id == messageId) message.copy(status = status) else message
+                            },
+                        )
+                    }
+                }
+            }
+
+            is ServerEvent.Saved -> _state.update { st -> st.copy(lastSaveAt = event.at) }
+
+            is ServerEvent.SaveFailed -> appendLog("error", "O servidor não conseguiu salvar o mundo.")
 
             is ServerEvent.Stopped -> Unit
 
@@ -773,27 +860,57 @@ object ServerController {
      */
     /**
      * Decodifica o PNG da cabeça fora da thread principal e só aceita 64x64.
-     * O evento carrega a sessão do servidor: imagem de uma execução anterior é
-     * descartada em vez de aparecer no lugar de outro jogador.
+     *
+     * Duas proteções acontecem **antes de qualquer branch**:
+     *  - a sessão do evento precisa ser a sessão atual (imagem de outra execução
+     *    não aparece);
+     *  - a revisão do servidor precisa ser maior que a já aplicada (uma skin
+     *    antiga que terminou de decodificar depois não sobrescreve a nova).
+     *
+     * O motivo informado pelo servidor é sempre guardado: o jogador nunca fica
+     * com um traço sem explicação.
      */
     private fun decodeAvatar(s: Session, event: ServerEvent.PlayerAvatar) {
         val key = if (event.xuid.isNotBlank()) event.xuid else event.name.lowercase()
         if (key.isBlank()) return
-        if (!event.available || event.png.isBlank()) {
-            _state.update { st ->
-                st.copy(
-                    avatars = st.avatars + (key to PlayerAvatar(hash = event.hash, image = null, reason = event.reason)),
-                )
-            }
-            return
-        }
         if (s.avatarSession == 0L) s.avatarSession = event.session
         if (event.session != s.avatarSession) return
+        if (!stillSame(s)) return
+
+        val previous = _state.value.avatars[key]
+        val previousRev = previous?.rev ?: 0L
+        if (previous != null && event.rev > 0 && event.rev <= previousRev) {
+            // Evento atrasado de uma skin já substituída.
+            noteAvatarDiagnostic(
+                "avatar descartado: ${event.name} rev ${event.rev} <= $previousRev",
+            )
+            return
+        }
+        val base = PlayerAvatar(
+            hash = event.hash,
+            image = previous?.image,
+            layout = event.layout,
+            reason = event.reason,
+            state = if (event.available) AvatarState.LOADING else AvatarState.UNSUPPORTED,
+            info = event.info,
+            rev = maxOf(event.rev, previousRev),
+        )
+
+        if (!event.available || event.png.isBlank()) {
+            val reason = event.reason.ifBlank { "o servidor não conseguiu gerar a imagem" }
+            publishAvatar(key, base.copy(state = AvatarState.UNSUPPORTED, reason = reason, image = null))
+            noteAvatarDiagnostic("avatar indisponível: ${event.name} — $reason")
+            return
+        }
+
         val cached = _state.value.avatars[key]
-        if (cached != null && cached.hash == event.hash && cached.available) return
+        if (cached != null && cached.hash == event.hash && cached.state == AvatarState.READY && cached.rev >= base.rev) {
+            return
+        }
+        publishAvatar(key, base.copy(state = AvatarState.LOADING))
 
         scope.launch {
-            val bitmap = try {
+            val decoded = try {
                 withContext(Dispatchers.Default) {
                     val bytes = android.util.Base64.decode(event.png, android.util.Base64.DEFAULT)
                     val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
@@ -808,31 +925,112 @@ object ServerController {
                 null
             }
             if (!stillSame(s)) {
-                bitmap?.recycle()
+                decoded?.recycle()
                 return@launch
             }
-            if (bitmap == null) {
-                _state.update { st ->
-                    st.copy(avatars = st.avatars + (key to PlayerAvatar(event.hash, null, event.layout, "imagem inválida")))
-                }
+            if (decoded == null) {
+                publishAvatar(
+                    key,
+                    base.copy(
+                        state = AvatarState.FAILED,
+                        reason = "imagem recebida não pôde ser decodificada (PNG 64x64 esperado)",
+                        image = null,
+                    ),
+                )
+                noteAvatarDiagnostic("avatar com PNG inválido: ${event.name}")
                 return@launch
             }
-            val image = bitmap.asImageBitmap()
+            val image = decoded.asImageBitmap()
+            var applied = false
             _state.update { st ->
-                // Só mantém se o jogador continua online: uma saída durante a
-                // decodificação não pode ressuscitar a linha dele.
-                if (st.players.none { it.key == key }) {
-                    st
-                } else {
-                    st.copy(avatars = st.avatars + (key to PlayerAvatar(event.hash, image, event.layout, "")))
+                // Só publica se: o jogador continua online, a sessão é a mesma e
+                // ninguém publicou uma revisão maior enquanto decodificávamos.
+                val current = st.avatars[key]
+                when {
+                    st.players.none { it.key == key } -> st
+                    current != null && current.rev > base.rev -> st
+                    else -> {
+                        applied = true
+                        st.copy(avatars = st.avatars + (key to base.copy(state = AvatarState.READY, image = image)))
+                    }
+                }
+            }
+            if (applied) {
+                noteAvatarDiagnostic(
+                    "avatar ok: ${event.name} layout=${event.layout} hash=${event.hash}",
+                )
+            } else {
+                decoded.recycle()
+            }
+        }
+    }
+
+    private fun publishAvatar(key: String, avatar: PlayerAvatar) {
+        _state.update { st -> st.copy(avatars = st.avatars + (key to avatar)) }
+    }
+
+    /** Últimas linhas de avatar para o relatório compartilhado (sem imagem). */
+    private val avatarLog = ArrayDeque<String>()
+
+    private fun noteAvatarDiagnostic(line: String) {
+        synchronized(avatarLog) {
+            avatarLog.addLast("${System.currentTimeMillis()} $line")
+            while (avatarLog.size > 24) avatarLog.removeFirst()
+        }
+    }
+
+    /** Diagnóstico de avatar por jogador, incluindo o motivo do formato. */
+    fun avatarDiagnostics(): List<String> {
+        val st = _state.value
+        return buildList {
+            add("Jogadores online: ${st.players.size}")
+            st.players.forEach { player ->
+                val avatar = st.avatars[player.key]
+                add(
+                    buildString {
+                        append(player.name)
+                        append(" (chave ").append(player.key).append(")")
+                        append(" estado=").append(avatar?.state ?: AvatarState.LOADING)
+                        if (avatar != null) {
+                            if (avatar.rev > 0) append(" rev=").append(avatar.rev)
+                            if (avatar.hash.isNotBlank()) append(" hash=").append(avatar.hash)
+                            if (avatar.layout.isNotBlank()) append(" layout=").append(avatar.layout)
+                            if (avatar.reason.isNotBlank()) append(" motivo=").append(avatar.reason)
+                            append(" info=").append(avatar.info.summary())
+                        }
+                    },
+                )
+            }
+            synchronized(avatarLog) {
+                if (avatarLog.isNotEmpty()) {
+                    add("-- Últimos eventos de avatar --")
+                    avatarLog.forEach { add(it) }
                 }
             }
         }
     }
 
+    /**
+     * Pede ao servidor para reenviar a miniatura. É chamado quando um jogador
+     * aparece sem imagem e nenhum evento chegou (app reaberto, evento perdido).
+     * Há limite por jogador para não inundar o processo.
+     */
+    fun requestAvatar(name: String) {
+        if (name.isBlank()) return
+        val now = System.currentTimeMillis()
+        synchronized(avatarRequests) {
+            val last = avatarRequests[name] ?: 0L
+            if (now - last < AVATAR_REQUEST_INTERVAL_MS) return
+            avatarRequests[name] = now
+        }
+        sendCommand(JSONObject().put("cmd", "avatar").put("name", name))
+    }
+
+    private val avatarRequests = HashMap<String, Long>()
+
     /** Mediana/mínimo/máximo dos pings válidos, guardando os últimos 60 s. */
     private fun recordPings(history: List<PingSample>, players: List<PlayerInfo>): List<PingSample> {
-        val valid = players.map { it.pingMs }.filter { it > 0 }.sorted()
+        val valid = players.map { it.pingMs }.filter { it >= 0 }.sorted()
         val now = System.currentTimeMillis()
         val kept = history.filter { now - it.at <= 60_000L }
         if (valid.isEmpty()) {
@@ -970,6 +1168,8 @@ object ServerController {
     }
 
     private fun command(name: String): JSONObject = JSONObject().put("cmd", name)
+
+    private fun command(name: String, id: String): JSONObject = command(name).put("id", id)
 
     private fun appendLog(level: String, message: String) {
         if (message.isBlank()) return

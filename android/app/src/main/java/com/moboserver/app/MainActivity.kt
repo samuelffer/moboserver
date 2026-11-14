@@ -8,12 +8,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.moboserver.app.core.CrashLog
 import com.moboserver.app.core.ServerController
 import com.moboserver.app.core.Store
 import com.moboserver.app.ui.AppRoot
 import com.moboserver.app.ui.CrashScreen
 import com.moboserver.app.ui.MoboTheme
+import com.moboserver.app.ui.UiReadiness
 
 class MainActivity : ComponentActivity() {
 
@@ -21,6 +23,10 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // SplashScreen compat: a abertura espera apenas a primeira leitura real
+        // de dados; nenhum sleep e nenhuma Activity intermediária.
+        val splash = installSplashScreen()
+        splash.setKeepOnScreenCondition { !UiReadiness.ready }
         super.onCreate(savedInstanceState)
         ServerController.init(this)
         Store.init(this)

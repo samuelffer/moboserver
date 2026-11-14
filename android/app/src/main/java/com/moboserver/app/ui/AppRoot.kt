@@ -4,9 +4,17 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -19,6 +27,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,9 +35,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.moboserver.design.AvatarStateUi
 import com.moboserver.design.MoboPanel
+import com.moboserver.design.Page
 import com.moboserver.design.Phase
 import com.moboserver.design.moboPalette
 import kotlinx.coroutines.delay
@@ -38,8 +48,9 @@ import kotlinx.coroutines.delay
  * adaptador observável [PanelViewModel], mais as subpáginas e diálogos que o kit
  * não desenha (opções do mundo, internet, jogo, aparência, avançado, ajuda).
  *
- * O adaptador é o único elo com o servidor: esta função não lê Store nem chama
- * o controlador diretamente.
+ * A navegação é estado observável e restaurável daqui: o botão Voltar do
+ * Android e o "‹ Voltar" da tela fazem exatamente a mesma coisa, sempre na
+ * camada mais alta (diálogo → subpágina → aba → saída).
  */
 @Composable
 fun AppRoot() {
@@ -57,6 +68,7 @@ fun AppRoot() {
     }
     val palette = moboPalette(dark)
 
+    var page by rememberSaveable { mutableStateOf(Page.Home) }
     var pendingExport by remember { mutableStateOf<String?>(null) }
 
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -99,10 +111,30 @@ fun AppRoot() {
         }
     }
 
-    Box(Modifier.fillMaxSize().background(palette.bg)) {
-        MoboPanel(panel, vm.actions, dark)
+    val goHome = { page = Page.Home }
 
-        if (extras.advancedOpen) {
+    // Voltar: a camada mais alta responde primeiro. Sem nenhuma camada aberta,
+    // o Android sai normalmente (o servidor continua no foreground service).
+    BackHandler(enabled = extras.dialog != null) { vm.openDialog(null) }
+    BackHandler(enabled = extras.dialog == null && extras.advancedOpen) { vm.closeAdvanced() }
+    BackHandler(
+        enabled = extras.dialog == null && !extras.advancedOpen && page == Page.Players,
+    ) { goHome() }
+
+    Box(Modifier.fillMaxSize().background(palette.bg)) {
+        MoboPanel(
+            state = panel,
+            actions = vm.actions,
+            dark = dark,
+            page = page,
+            onPageChange = { page = it },
+        )
+
+        AnimatedVisibility(
+            visible = extras.advancedOpen,
+            enter = fadeIn(tween(200)) + slideInVertically(tween(200)) { it / 60 },
+            exit = fadeOut(tween(160)) + slideOutVertically(tween(160)) { it / 60 },
+        ) {
             AdvancedPage(
                 dark = dark,
                 extras = extras,
@@ -133,7 +165,7 @@ fun AppRoot() {
                 )
                 PanelDialog.Help -> HelpDialog(
                     dark = dark,
-                    address = panel.localAddress,
+                    address = panel.internetAddress,
                     port = panel.port,
                     onCopyAddress = { vm.actions.copyAddress() },
                     onDismiss = close,
@@ -173,18 +205,36 @@ fun AppRoot() {
                     onDelete = { vm.confirmDelete(dialog.id) },
                     onDismiss = close,
                 )
-                is PanelDialog.Text -> TextDialog(
-                    dark = dark,
-                    title = dialog.title,
-                    body = dialog.body,
-                    onDismiss = close,
-                )
                 is PanelDialog.ConfirmDelete -> ConfirmDeleteDialog(
                     dark = dark,
                     name = dialog.name,
                     onConfirm = { vm.deleteWorld(dialog.id); close() },
                     onDismiss = close,
                 )
+                is PanelDialog.Text -> TextDialog(
+                    dark = dark,
+                    title = dialog.title,
+                    body = dialog.body,
+                    onDismiss = close,
+                )
+                is PanelDialog.PlayerDetails -> {
+                    val player = panel.players.firstOrNull { it.id == dialog.id }
+                    PlayerDetailsDialog(
+                        dark = dark,
+                        name = player?.name ?: dialog.id,
+                        latencyMs = player?.latencyMs,
+                        state = when (player?.avatarState) {
+                            AvatarStateUi.Ready -> "disponível"
+                            AvatarStateUi.Unsupported -> "formato não suportado"
+                            AvatarStateUi.Failed -> "falhou"
+                            else -> "carregando"
+                        },
+                        reason = player?.avatarReason.orEmpty(),
+                        infoSummary = player?.avatarInfo.orEmpty(),
+                        onRetry = { vm.retryAvatar(dialog.id); close() },
+                        onDismiss = close,
+                    )
+                }
             }
         }
 
