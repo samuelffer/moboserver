@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.moboserver.app.core.AddressClassifier
 import com.moboserver.app.core.AvatarState
 import com.moboserver.app.core.BanEntry
 import com.moboserver.app.core.Bans
@@ -261,7 +262,7 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    /** Classifica o endereço: verificado, IP público observado, WAN do roteador ou só LAN. */
+    /** Classificação dos endereços delegada a [AddressClassifier] (testada na JVM). */
     private data class Address(
         val lanIp: String?,
         val share: String,
@@ -274,34 +275,14 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
         val exposure = runtime.exposure
         val port = runtime.info?.port ?: config.port
         val local = lanIp ?: exposure.lanIp
-        val cgnat = local != null && Net.isCarrierGradeNat(local)
-        val publicIp = exposure.publicIp?.takeIf { it.isNotBlank() }
-        val wanIp = exposure.wanIp?.takeIf { it.isNotBlank() }
-        val verified = exposure.externalVerified == true
-
-        // 100.64/10 é CGNAT: nunca é endereço de entrada para amigos.
-        val usablePublic = publicIp?.takeIf { !Net.isCarrierGradeNat(it) }
-        val share = when {
-            verified && usablePublic != null -> "$usablePublic:$port"
-            usablePublic != null -> "$usablePublic:$port"
-            wanIp != null && !Net.isCarrierGradeNat(wanIp) -> "$wanIp:$port"
-            local != null -> "$local:$port"
-            else -> "—"
-        }
-        val kind = when {
-            verified && usablePublic != null -> "verificado"
-            usablePublic != null -> "observado"
-            wanIp != null && !Net.isCarrierGradeNat(wanIp) -> "wan"
-            local != null -> "local"
-            else -> "nenhum"
-        }
-        val status = when {
-            verified -> "Teste externo confirmou o acesso"
-            publicIp != null -> "Acesso não verificado"
-            cgnat -> "Rede da operadora (CGNAT): o endereço 100.64/10 não serve para amigos"
-            else -> "Não verificado"
-        }
-        return Address(local, share, kind, status, cgnat)
+        val choice = AddressClassifier.classify(
+            lanIp = local,
+            wanIp = exposure.wanIp,
+            publicIp = exposure.publicIp,
+            port = port,
+            verified = exposure.externalVerified,
+        )
+        return Address(local, choice.share, choice.kind, choice.status, choice.cgnat)
     }
 
     private fun phaseOf(status: ServerStatus): Phase = when (status) {
