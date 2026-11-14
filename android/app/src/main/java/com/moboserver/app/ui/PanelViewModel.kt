@@ -183,10 +183,27 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
             else -> (validRtt[validRtt.size / 2 - 1] + validRtt[validRtt.size / 2]) / 2
         }
 
+        // O kit mostra "Selecionado" no botão do mundo; "em execução" entra na
+        // linha secundária do cartão, que é o mesmo lugar do tamanho.
+        val runningId = ServerController.runningWorldId
+        val worldsUi = if (runningId == null) {
+            worldsCache
+        } else {
+            worldsCache.map { world ->
+                if (world.id == runningId) world.copy(size = "${world.size} • em execução") else world
+            }
+        }
+
+        // Seleção apontando para uma pasta que não existe mais: a mensagem
+        // precisa dizer isso, não "selecione um mundo".
+        val worldsLoaded = worldsSignature.isNotEmpty()
+        val selectionMissing = worldsLoaded && config.activeWorldId.isNotBlank() &&
+            worldsInfo.none { it.id == config.activeWorldId }
+
         _panel.value = PanelUi(
             phase = phaseOf(runtime.status),
             selectedWorldId = config.activeWorldId.ifBlank { null },
-            worlds = worldsCache,
+            worlds = worldsUi,
             players = players,
             serverName = config.serverName,
             localAddress = lanIp ?: runtime.exposure.lanIp ?: "—",
@@ -197,7 +214,12 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
             uptime = uptimeOf(runtime),
             internetStatus = internetStatus(runtime),
             logs = logsText(runtime),
-            error = runtime.failure?.let { "${it.title}. ${it.message}" },
+            error = runtime.failure?.let { "${it.title}. ${it.message}" }
+                ?: if (selectionMissing) {
+                    "O mundo selecionado não está mais no aparelho. Importe de novo ou escolha outro em Mundos."
+                } else {
+                    null
+                },
         )
 
         val previous = _extras.value
