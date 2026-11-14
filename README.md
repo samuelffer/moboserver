@@ -200,7 +200,7 @@ e agora está ligada aos dados e às ações reais do aplicativo. `compose/DemoA
 
 | Arquivo | Tamanho | SHA-256 |
 | --- | --- | --- |
-| [`releases_apk/MoboServer-v1.4.3-android-arm64.zip`](releases_apk/MoboServer-v1.4.3-android-arm64.zip) | 19 MB | `c1fe8ba7e8d787797e0a50c6efababf8dcdfcca4a1c3c77e516b0a9ff1d55802` |
+| [`releases_apk/MoboServer-v1.4.3-android-arm64.zip`](releases_apk/MoboServer-v1.4.3-android-arm64.zip) | 19 MB | `5e646495e991b95e7bf2e69a7e9135a2b94ee8909f4c66f2773bdf8aac5975e9` |
 
 O ZIP contém `MoboServer-v1.4.3.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
 (`apksigner verify` roda no CI) e as próximas versões instalam por cima desta.
