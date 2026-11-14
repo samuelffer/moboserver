@@ -15,12 +15,12 @@ func TestRelayMuxAtribuiPortasUnicas(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 
-	relay := &tunnel.UDPRelay{Listen: "127.0.0.1:0", MaxPorts: 4, Log: t.Logf}
+	relay := &tunnel.UDPRelay{Listen: "127.0.0.1:0", MaxPorts: 4, Log: func(msg string) { t.Log(msg) }}
 	ready := make(chan string, 1)
 	go func() { _ = relay.ListenAndServe(ctx, func(control string) { ready <- control }) }()
 	control := <-ready
 
-	client := &tunnel.UDPClient{RelayAddr: control, Ports: 2, Log: t.Logf}
+	client := &tunnel.UDPClient{RelayAddr: control, Ports: 2, Log: func(msg string) { t.Log(msg) }}
 	assigned := make(chan []int, 1)
 	client.OnReady = func(ports []int) { assigned <- ports }
 	go client.Run(ctx)
