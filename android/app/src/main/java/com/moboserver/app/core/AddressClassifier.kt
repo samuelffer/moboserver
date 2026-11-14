@@ -63,7 +63,8 @@ object AddressClassifier {
         }
         val status = when {
             confirmed -> "Teste externo confirmou o acesso"
-            publicUsable != null -> "Acesso não verificado"
+            // IP visto por STUN ou endereço do roteador: nada disso confirma acesso externo.
+            publicUsable != null || wanUsable != null -> "Acesso não verificado"
             cgnatLan -> "Rede da operadora (CGNAT): o endereço 100.64/10 não serve para amigos"
             else -> "Não verificado"
         }
