@@ -12,8 +12,8 @@ android {
         applicationId = "com.moboserver.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 15
-        versionName = "1.4.0"
+        versionCode = 16
+        versionName = "1.4.1"
 
         // Minecraft Bedrock is 64-bit only, so shipping a single ABI keeps the
         // APK small without limiting any supported device.

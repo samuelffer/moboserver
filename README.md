@@ -34,6 +34,24 @@ processo nativo do próprio app:
 * **Segundo plano**: serviço em primeiro plano + wake lock + Wi-Fi lock, com notificação
   permanente mostrando jogadores e porta.
 
+## Correções da versão 1.4.1
+
+* **Seleção de mundo**: passou a existir uma única fonte de verdade (`ServerController.selectWorld`),
+  gravações atômicas no `Store` e mensagens separadas para "nenhum mundo escolhido", "pasta apagada",
+  "mundo incompleto", "validação recusou", "validação estourou o prazo" e "binário não rodou".
+  Ajustes agora grava só os campos que edita (`Store.saveSettings`) e não apaga mais a seleção.
+  Excluir um mundo limpa a seleção apenas se ela ainda apontar para ele (`Store.clearWorldIf`).
+* **Importação**: iniciar o servidor durante a importação é recusado com a mensagem certa
+  ("Importação em andamento") em vez de "Nenhum mundo selecionado".
+* **Validador com prazo real**: a saída do `-validate-world` é lida em thread própria e o
+  processo é encerrado à força no limite de 60 s; timeout virou um resultado próprio, distinto
+  de "mundo inválido".
+* **Diagnóstico**: mostra pacote, `versionName`/`versionCode`, ID selecionado, diretório
+  resolvido, existência de `level.dat`/`db/`, mundos listados, estado da sessão e o último
+  motivo técnico da falha (sem tokens, skins ou dados pessoais).
+* **Testes**: 20 testes de JVM (`WorldSelectionTest`, `ConfigCodecTest`) rodam no CI e ficam
+  registrados em `docs/test-evidence.txt`.
+
 ## Recursos da versão 1.4.0
 
 | Recurso | Detalhe |
@@ -75,9 +93,9 @@ processo nativo do próprio app:
 
 | Arquivo | Tamanho | SHA-256 |
 | --- | --- | --- |
-| [`releases_apk/MoboServer-v1.4.0-android-arm64.zip`](releases_apk/MoboServer-v1.4.0-android-arm64.zip) | 18,8 MB | `081fbe3a37969b60dea8898590a829bb518a3b75175e1e9795cda0a76c680262` |
+| [`releases_apk/MoboServer-v1.4.1-android-arm64.zip`](releases_apk/MoboServer-v1.4.1-android-arm64.zip) | a confirmar | `0000000000000000000000000000000000000000000000000000000000000000` |
 
-O ZIP contém `MoboServer-v1.4.0.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
+O ZIP contém `MoboServer-v1.4.1.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
 (`apksigner verify` roda no CI) e as próximas versões instalam por cima desta.
 
 ## Instalação
@@ -86,7 +104,7 @@ Copie o APK do ZIP para o celular e abra o arquivo — o Android vai pedir permi
 instalar apps de fontes desconhecidas. Para conferir o download, compare o SHA-256 acima:
 
 ```bash
-sha256sum MoboServer-v1.4.0-android-arm64.zip
+sha256sum MoboServer-v1.4.1-android-arm64.zip
 ```
 
 ## Quem consegue entrar
@@ -257,6 +275,13 @@ a mensagem de erro do servidor.
 * Testes novos: interfaces injetadas, coleta de ICE pela lista injetada, SDP,
   faixa de portas e chave P-384. O self-test falha se a sinalização ou o ICE não
   funcionarem.
+
+### 1.4.1
+
+* Correção e instrumentação da seleção de mundo (ver "Correções da versão 1.4.1").
+* `Store` serializado, atualizações por campo, seleção preservada ao salvar Ajustes e ao
+  reabrir o app; `decode` tolerante, campo por campo.
+* Testes de JVM no CI.
 
 ### 1.4.0
 
