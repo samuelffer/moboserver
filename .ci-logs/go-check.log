@@ -1,9 +1,3 @@
---- FAIL: TestRelayMuxAtribuiPortasUnicas (25.00s)
-    relaymux_test.go:32: sem portas do relay
---- FAIL: TestRelayMuxEntregaDatagramas (25.00s)
-    relaymux_test.go:100: sem portas do relay
-FAIL
-FAIL	github.com/samuelffer/moboserver/server	50.164s
-?   	github.com/samuelffer/moboserver/server/cmd/relay	[no test files]
-ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.238s
-FAIL
+# github.com/samuelffer/moboserver/server
+# [github.com/samuelffer/moboserver/server]
+vet: ./relaymux_test.go:18:69: cannot use t.Logf (value of type func(format string, args ...any)) as func(string) value in struct literal
