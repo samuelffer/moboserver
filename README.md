@@ -34,6 +34,27 @@ processo nativo do próprio app:
 * **Segundo plano**: serviço em primeiro plano + wake lock + Wi-Fi lock, com notificação
   permanente mostrando jogadores e porta.
 
+## Correções da versão 1.4.4
+
+* **Política de geração por mundo**: registro próprio por ID persistente (`generation/worlds/<hash>.json`),
+  escrita atômica, flock, validação antes de gravar e gerador efetivo respeitado. Mundo existente não vira
+  "importado" por existir; origem vem de metadados de importação. Registro inválido/corrompido bloqueia e é
+  preservado; recuperação explícita em **Mundos > opções > Recuperar política**. O `generation.json` global
+  antigo não é herdado automaticamente.
+* **Skins**: motivos específicos (osso `head` ausente, sem cubos diretos, geometria em descendentes, UV por
+  face, UV fora da textura, malha não suportada, parsing/seleção), composição em `NRGBA` com teste de
+  transparência parcial e **exportação explícita** de `texture.png` + `model.json` + diagnóstico, sem tokens
+  nem pacote de login.
+* **Endereços**: `AddressClassifier.classify()` valida IPv4 antes de classificar; válido ≠ público; WAN
+  privada/CGNAT preservada com rótulo; IPv6 tratado à parte; STUN/UPnP/teste local não confirmam acesso externo.
+* **Locais**: logs de desligamento sem duplicação, UDP legado não anunciado ativo com RakNet desligado,
+  constantes de view distance 4–24 (padrão 8) em UI/ViewModel/Go.
+* **Identidade de build**: `version.properties` 1.4.4/19, revisão Git e hash de fonte injetados no servidor;
+  CI verifica assinatura, package, versionName/Code, ARM64 e commit compilado antes de publicar o ZIP.
+
+Limitações declaradas: geração vanilla e acesso externo real **não concluídos**; Playit direto não comprovado;
+sem teste em aparelho físico ou cliente Minecraft nesta entrega. Detalhes em `docs/relatorio-1.4.4.md`.
+
 ## Correções da versão 1.4.3
 
 ### Cabeça da skin dos jogadores
@@ -200,10 +221,13 @@ e agora está ligada aos dados e às ações reais do aplicativo. `compose/DemoA
 
 | Arquivo | Tamanho | SHA-256 |
 | --- | --- | --- |
+| [`releases_apk/MoboServer-v1.4.4-android-arm64.zip`](releases_apk/MoboServer-v1.4.4-android-arm64.zip) | 19 MB | `0dd87952c17fa3591acc9e28581034ce935d824468591debab2b0cef9b36b1ab` |
 | [`releases_apk/MoboServer-v1.4.3-android-arm64.zip`](releases_apk/MoboServer-v1.4.3-android-arm64.zip) | 19 MB | `1f3a4ab4337595d7bbb80a77b764b307800b671db22359f1e8774e45766fbe69` |
 
-O ZIP contém `MoboServer-v1.4.3.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
-(`apksigner verify` roda no CI) e as próximas versões instalam por cima desta.
+O ZIP 1.4.4 contém `MoboServer-v1.4.4.apk`, `LEIA-ME.txt`, `MUDANCAS-E-LIMITACOES.md`,
+`BUILD-INFO.txt`, `SHA256SUMS.txt` e `LICENSE`. O APK é assinado (`apksigner verify` roda no CI),
+mantém o `applicationId` `com.moboserver.app` e a chave da linha 1.4.x; instale por cima, sem desinstalar.
+SHA-256 do APK 1.4.4: `940c6e492fe60c3d45f067abab2bc68acecbd493876cf76e5fec0685d8feaffd`.
 
 ## Instalação
 
@@ -211,7 +235,7 @@ Copie o APK do ZIP para o celular e abra o arquivo — o Android vai pedir permi
 instalar apps de fontes desconhecidas. Para conferir o download, compare o SHA-256 acima:
 
 ```bash
-sha256sum MoboServer-v1.4.3-android-arm64.zip
+sha256sum MoboServer-v1.4.4-android-arm64.zip
 ```
 
 ## Quem consegue entrar
@@ -382,6 +406,16 @@ a mensagem de erro do servidor.
 * Testes novos: interfaces injetadas, coleta de ICE pela lista injetada, SDP,
   faixa de portas e chave P-384. O self-test falha se a sinalização ou o ICE não
   funcionarem.
+
+### 1.4.4
+
+* Política de geração por mundo (schema 2), gerador efetivo vinculado ao registro, recuperação explícita e
+  origem por metadados; não regenera/apaga chunks e não anuncia equivalência vanilla.
+* Skin: códigos de motivo específicos, UV por face north/front, `NRGBA`, exportação local opcional de
+  textura/modelo/diagnóstico sem credenciais.
+* Endereços: classificação real de IPv4 público/privado/CGNAT/loopback/reservado, IPv6 separado, confirmação
+  externa apenas para o alvo testado.
+* Build 1.4.4/19 com identidade de fonte controlada e ZIP verificado no CI.
 
 ### 1.4.3
 

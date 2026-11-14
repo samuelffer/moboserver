@@ -1,0 +1,27 @@
+MoboServer 1.4.4 — evidências automatizadas
+Commit compilado: 126c7d4ebdd72dc0de41a4dd78ce72e6788c1037
+Run verde: https://github.com/samuelffer/moboserver/actions/runs/43609140284
+ZIP: releases_apk/MoboServer-v1.4.4-android-arm64.zip
+SHA-256 ZIP: 0dd87952c17fa3591acc9e28581034ce935d824468591debab2b0cef9b36b1ab
+SHA-256 APK: 940c6e492fe60c3d45f067abab2bc68acecbd493876cf76e5fec0685d8feaffd
+
+CI (ubuntu-24.04):
+- go vet ./... — ok
+- go test ./... -count=1 — ok
+- TestGeneration*, TestLevelDat*, TestValidateWorld*, TestAvatar*, TestSkinExport*, TestNbtSkip*,
+  TestTransportSummary*, TestClampViewDistance* — ok
+- selftest NetherNet 19132/19555, RakNet 19134, túnel 19136 — SELFTEST OK
+- build ARM64 + patch ELF (linker64, TLS 64, sem DT_NEEDED) — ok
+- testReleaseUnitTest (AddressClassifier/WorldSelection/ConfigCodec) — ok
+- compileDebugKotlin + assembleRelease — ok
+- apksigner verify, aapt badging (com.moboserver.app, 1.4.4/19, arm64-v8a), mesma assinatura 1.4.3,
+  libmobosrv.so do APK == binário recém-compilado, revisão no binário — ok
+- ZIP novo publicado sem sobrescrever 1.4.3; artefato if-no-files-found: error — ok
+
+Local (linux/amd64, Go 1.27.4, proxy de módulos reconstruído):
+- go test ./... -count=1 — ok (server, internal/tunnel)
+- go vet ./... — ok
+- selftest 19132, 19555, 19134 -raknet, 19136 -raknet -selftest-tunnel — SELFTEST OK
+- cross-build linux/arm64 + patch ELF — ok
+
+Não executado: teste em aparelho Android físico, cliente Minecraft real, acesso externo por segunda rede.
