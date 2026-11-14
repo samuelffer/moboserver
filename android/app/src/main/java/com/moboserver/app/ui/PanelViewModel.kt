@@ -57,6 +57,8 @@ sealed interface PanelDialog {
     data object Appearance : PanelDialog
     data class WorldMenu(val id: String, val name: String) : PanelDialog
     data class ConfirmDelete(val id: String, val name: String) : PanelDialog
+    /** Texto longo (resultado de teste) com rolagem. */
+    data class Text(val title: String, val body: String) : PanelDialog
 }
 
 /** Ações que precisam da Activity (seletor de arquivos, compartilhar). */
@@ -629,6 +631,19 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
     /** Usado pela subpágina Avançado; cada chamada grava só os campos alterados. */
     fun updateConfig(block: (ServerConfig) -> ServerConfig) {
         Store.update(block)
+    }
+
+    fun saveWorld() {
+        ServerController.saveWorld()
+        showMessage("Pedido de salvamento enviado ao servidor.")
+    }
+
+    /** Roda `mobosrv -version`: confirma que o binário embutido executa neste aparelho. */
+    fun testBinary() {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { Diagnostics.testBinary(context) }
+            openDialog(PanelDialog.Text("Teste do binário do servidor", result))
+        }
     }
 
     fun checkExternalAccess() {

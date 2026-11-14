@@ -115,6 +115,9 @@ fun AppRoot() {
                 onKick = { name -> vm.kick(name) },
                 onBan = { name, key -> vm.ban(name, if (key == name.lowercase()) "" else key) },
                 onRefreshBans = { vm.refreshBans() },
+                onSaveWorld = { vm.saveWorld() },
+                onTestBinary = { vm.testBinary() },
+                serverRunning = panel.phase == Phase.Running,
             )
         }
 
@@ -168,6 +171,12 @@ fun AppRoot() {
                     onExport = { vm.requestExport(dialog.id); close() },
                     onValidate = { vm.validateWorld(dialog.id); close() },
                     onDelete = { vm.confirmDelete(dialog.id) },
+                    onDismiss = close,
+                )
+                is PanelDialog.Text -> TextDialog(
+                    dark = dark,
+                    title = dialog.title,
+                    body = dialog.body,
                     onDismiss = close,
                 )
                 is PanelDialog.ConfirmDelete -> ConfirmDeleteDialog(

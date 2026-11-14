@@ -529,6 +529,25 @@ fun WorldMenuDialog(
 }
 
 @Composable
+fun TextDialog(dark: Boolean, title: String, body: String, onDismiss: () -> Unit) {
+    MoboDialogFrame(dark, onDismiss) {
+        DialogTitle(dark, title)
+        MoboGroup(dark) {
+            Text(
+                body,
+                color = moboPalette(dark).ink,
+                fontSize = 13.sp,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
+        }
+        TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+            Text("Fechar", color = moboPalette(dark).green)
+        }
+    }
+}
+
+@Composable
 fun ConfirmDeleteDialog(dark: Boolean, name: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     MoboDialogFrame(dark, onDismiss) {
         DialogTitle(
@@ -563,6 +582,9 @@ fun AdvancedPage(
     onKick: (String) -> Unit,
     onBan: (String, String) -> Unit,
     onRefreshBans: () -> Unit,
+    onSaveWorld: () -> Unit,
+    onTestBinary: () -> Unit,
+    serverRunning: Boolean,
 ) {
     val p = moboPalette(dark)
     var relayAddr by remember(extras.relayAddr) { mutableStateOf(extras.relayAddr) }
@@ -575,6 +597,18 @@ fun AdvancedPage(
         subtitle = "Autenticação, rede e diagnóstico. Vale no próximo início, exceto onde indicado.",
         onBack = onBack,
     ) {
+        MoboLabel(dark, "SERVIDOR")
+        MoboGroup(dark) {
+            MoboRow(
+                dark,
+                "Salvar mundo agora",
+                value = if (serverRunning) "" else "servidor desligado",
+                enabled = serverRunning,
+                onClick = if (serverRunning) onSaveWorld else null,
+            )
+        }
+        MoboNote(dark, "Parar o servidor também salva o mundo.")
+
         MoboLabel(dark, "AUTENTICAÇÃO")
         MoboGroup(dark) {
             MoboSwitchRow(
@@ -642,6 +676,8 @@ fun AdvancedPage(
             ) { value -> onUpdate { it.copy(advancedDiagnostics = value) } }
             MoboDivider(dark)
             MoboRow(dark, "Compartilhar diagnóstico", onClick = { onDiagnostics() })
+            MoboDivider(dark)
+            MoboRow(dark, "Testar o binário do servidor", onClick = { onTestBinary() })
         }
         MoboNote(dark, "O relatório inclui versões e caminhos. Tokens e certificados não entram.")
 
