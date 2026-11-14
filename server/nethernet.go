@@ -84,9 +84,8 @@ func startNetherNet(conf server.Config, opts netherNetOptions) (server.Listener,
 		// API disponivel no pion/webrtc v4.2.21 (go.sum). Reescreve apenas os
 		// candidatos host; a porta anunciada e a porta real do socket, por isso
 		// o mapeamento publico precisa manter os mesmos numeros.
-		if err := settingEngine.SetNAT1To1IPs([]string{opts.PublicIP}, webrtc.ICECandidateTypeHost); err != nil {
-			return nil, fmt.Errorf("anunciar IP publico no ICE: %w", err)
-		}
+		// Na versao fixada (v4.2.21) a funcao nao devolve erro.
+		settingEngine.SetNAT1To1IPs([]string{opts.PublicIP}, webrtc.ICECandidateTypeHost)
 		log.Info("ICE vai anunciar um IP publico.", "ip", opts.PublicIP)
 	}
 	var mux ice.UDPMux
