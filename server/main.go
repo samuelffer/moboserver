@@ -24,6 +24,7 @@ import (
 	"github.com/df-mc/dragonfly/server/world"
 	"github.com/df-mc/dragonfly/server/world/biome"
 	"github.com/df-mc/dragonfly/server/world/generator"
+	"github.com/pion/ice/v4"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 
 	"github.com/samuelffer/moboserver/server/internal/tunnel"
