@@ -23,7 +23,7 @@ env:
 jobs:
   build:
     name: Servidor Go + APK Android
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
 
     steps:
@@ -53,15 +53,25 @@ jobs:
         working-directory: server
         run: |
           set -euo pipefail
-          go vet ./...
-          go test ./... -count=1 | tee /tmp/go-test.log
-          go test -v -count=1 -run 'TestGeneration|TestLevelDat|TestValidateWorld|TestAvatar|TestSkinExport|TestNbtSkip|TestTransportSummary|TestClampViewDistance' . | tee /tmp/go-evidence.log
-          python3 ../scripts/build-server.py ../build/mobosrv --host
+          check() {
+            local name="$1"; shift
+            if ! "$@" > "/tmp/${name}.log" 2>&1; then
+              echo "::error title=${name} falhou::$(tail -c 3000 "/tmp/${name}.log" | tr '\n' ' ')"
+              tail -80 "/tmp/${name}.log"
+              exit 1
+            fi
+            tail -5 "/tmp/${name}.log"
+          }
+          check go-vet go vet ./...
+          check go-test go test ./... -count=1
+          cp /tmp/go-test.log /tmp/go-test.log.keep
+          check go-evidence go test -v -count=1 -run 'TestGeneration|TestLevelDat|TestValidateWorld|TestAvatar|TestSkinExport|TestNbtSkip|TestTransportSummary|TestClampViewDistance' .
+          check build-host python3 ../scripts/build-server.py ../build/mobosrv --host
           ../build/mobosrv -version | tee /tmp/go-version.txt
-          ../build/mobosrv -selftest -port 19132
-          ../build/mobosrv -selftest -port 19555
-          ../build/mobosrv -selftest -port 19134 -raknet
-          ../build/mobosrv -selftest -port 19136 -raknet -selftest-tunnel
+          check selftest-19132 ../build/mobosrv -selftest -port 19132
+          check selftest-19555 ../build/mobosrv -selftest -port 19555
+          check selftest-raknet ../build/mobosrv -selftest -port 19134 -raknet
+          check selftest-tunnel ../build/mobosrv -selftest -port 19136 -raknet -selftest-tunnel
 
       - name: "Servidor: compilar ARM64 da mesma revisão"
         run: |
@@ -272,6 +282,20 @@ jobs:
           git add -f "${{ steps.package.outputs.zip }}"
           git commit -m "build: ${{ steps.package.outputs.name }} [skip ci]"
           git push origin "HEAD:$GITHUB_REF_NAME"
+
+      - name: Logs de diagnóstico (falha)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-failure-logs
+          path: |
+            /tmp/go-*.log
+            /tmp/selftest-*.log
+            /tmp/build-host.log
+            /tmp/gradle*.log
+            /tmp/jvm-evidence.txt
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Resumo
         if: always()
