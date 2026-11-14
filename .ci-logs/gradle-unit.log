@@ -21,10 +21,10 @@ Daemon will be stopped at the end of the build
 > Task :app:mapReleaseSourceSetPaths
 > Task :app:generateReleaseResources
 > Task :app:packageReleaseResources
-> Task :app:mergeReleaseResources
 > Task :app:createReleaseCompatibleScreenManifests
 > Task :app:extractDeepLinksRelease
 > Task :app:parseReleaseLocalResources
+> Task :app:mergeReleaseResources
 
 > Task :app:processReleaseMainManifest
 /home/runner/work/moboserver/moboserver/android/app/src/main/AndroidManifest.xml:17:9-41 Warning:
@@ -38,35 +38,27 @@ The AGP Upgrade Assistant can remove the attribute from the AndroidManifest.xml 
 > Task :app:processReleaseManifestForPackage
 > Task :app:processReleaseResources
 
-> Task :app:compileReleaseKotlin
-w: file:///home/runner/work/moboserver/moboserver/android/app/src/main/java/com/moboserver/app/ui/AppRoot.kt:37:33 'val Icons.Filled.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List.
-w: file:///home/runner/work/moboserver/moboserver/android/app/src/main/java/com/moboserver/app/ui/ConsoleScreen.kt:160:34 'val Icons.Filled.Send: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Send.
-
-> Task :app:compileReleaseJavaWithJavac
-> Task :app:bundleReleaseClassesToRuntimeJar
-> Task :app:bundleReleaseClassesToCompileJar
-> Task :app:processReleaseJavaRes
-> Task :app:compileReleaseUnitTestKotlin
-> Task :app:compileReleaseUnitTestJavaWithJavac NO-SOURCE
-> Task :app:processReleaseUnitTestJavaRes
-
-> Task :app:testReleaseUnitTest
-
-WorldSelectionTest > iniciar durante a importacao tem mensagem propria FAILED
-    java.lang.AssertionError at WorldSelectionTest.kt:96
-
-20 tests completed, 1 failed
-
-> Task :app:testReleaseUnitTest FAILED
+> Task :app:compileReleaseKotlin FAILED
+e: file:///home/runner/work/moboserver/moboserver/android/app/src/main/java/com/moboserver/app/ui/PanelSubpages.kt:246:36 None of the following candidates is applicable:
+fun colors(): TextFieldColors
+fun colors(focusedTextColor: Color = ..., unfocusedTextColor: Color = ..., disabledTextColor: Color = ..., errorTextColor: Color = ..., focusedContainerColor: Color = ..., unfocusedContainerColor: Color = ..., disabledContainerColor: Color = ..., errorContainerColor: Color = ..., cursorColor: Color = ..., errorCursorColor: Color = ..., selectionColors: TextSelectionColors? = ..., focusedIndicatorColor: Color = ..., unfocusedIndicatorColor: Color = ..., disabledIndicatorColor: Color = ..., errorIndicatorColor: Color = ..., focusedLeadingIconColor: Color = ..., unfocusedLeadingIconColor: Color = ..., disabledLeadingIconColor: Color = ..., errorLeadingIconColor: Color = ..., focusedTrailingIconColor: Color = ..., unfocusedTrailingIconColor: Color = ..., disabledTrailingIconColor: Color = ..., errorTrailingIconColor: Color = ..., focusedLabelColor: Color = ..., unfocusedLabelColor: Color = ..., disabledLabelColor: Color = ..., errorLabelColor: Color = ..., focusedPlaceholderColor: Color = ..., unfocusedPlaceholderColor: Color = ..., disabledPlaceholderColor: Color = ..., errorPlaceholderColor: Color = ..., focusedSupportingTextColor: Color = ..., unfocusedSupportingTextColor: Color = ..., disabledSupportingTextColor: Color = ..., errorSupportingTextColor: Color = ..., focusedPrefixColor: Color = ..., unfocusedPrefixColor: Color = ..., disabledPrefixColor: Color = ..., errorPrefixColor: Color = ..., focusedSuffixColor: Color = ..., unfocusedSuffixColor: Color = ..., disabledSuffixColor: Color = ..., errorSuffixColor: Color = ...): TextFieldColors
+e: file:///home/runner/work/moboserver/moboserver/android/app/src/main/java/com/moboserver/design/MoboDesign.kt:91:17 Unresolved reference 'BottomBar'.
+e: file:///home/runner/work/moboserver/moboserver/android/app/src/main/java/com/moboserver/design/MoboDesign.kt:91:78 Unresolved reference 'it'.
+e: file:///home/runner/work/moboserver/moboserver/android/app/src/main/java/com/moboserver/design/MoboDesign.kt:217:13 Modifier 'private' is not applicable to 'local function'.
+e: file:///home/runner/work/moboserver/moboserver/android/app/src/main/java/com/moboserver/design/MoboDesign.kt:226:2 Syntax error: Expecting '}'.
 
 FAILURE: Build failed with an exception.
 
 * What went wrong:
-Execution failed for task ':app:testReleaseUnitTest'.
-> There were failing tests. See the report at: file:///home/runner/work/moboserver/moboserver/android/app/build/reports/tests/testReleaseUnitTest/index.html
+Execution failed for task ':app:compileReleaseKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
 
 * Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
 > Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
 
-BUILD FAILED in 2m 18s
-26 actionable tasks: 25 executed, 1 from cache
+BUILD FAILED in 1m 16s
+19 actionable tasks: 18 executed, 1 from cache
