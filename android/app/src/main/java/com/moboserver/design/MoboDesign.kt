@@ -212,7 +212,8 @@ fun MoboPanel(state: PanelUi, actions: PanelActions, dark: Boolean = isSystemInD
             Row(verticalAlignment=Alignment.Bottom,horizontalArrangement=Arrangement.spacedBy(2.dp)) { (1..3).forEach { i-> Box(Modifier.width(4.dp).height((5+i*4).dp).background(if(i<=bars) C.green else C.line,RoundedCornerShape(1.dp))) } }
             Text(rtt?.let{"$it ms"}?:"—",color=C.muted,fontSize=13.sp)
         }
-    };Note("Latência entre cada jogador e o servidor. Sem medição, mostramos —. As barras são apenas uma indicação visual.")
+    } }
+    Note("Latência entre cada jogador e o servidor. Sem medição, mostramos —. As barras são apenas uma indicação visual.")
 }
 @Composable private fun BottomBar(page:Page,onPage:(Page)->Unit) {
     val tabs=listOf(Triple(Page.Home,"Início",Icons.Outlined.Home),Triple(Page.Worlds,"Mundos",Icons.Outlined.Inventory2),Triple(Page.Console,"Console",Icons.Outlined.Terminal),Triple(Page.Settings,"Ajustes",Icons.Outlined.Settings))

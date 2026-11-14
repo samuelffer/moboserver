@@ -32,7 +32,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -243,7 +243,7 @@ fun MoboField(
             keyboardType = if (numeric) KeyboardType.Number else KeyboardType.Text,
         ),
         shape = RoundedCornerShape(14.dp),
-        colors = TextFieldDefaults.colors(
+        colors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = p.ink,
             unfocusedTextColor = p.ink,
             focusedContainerColor = Color.Transparent,

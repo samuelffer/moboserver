@@ -212,6 +212,13 @@ jobs:
             done
           } | tee -a ../docs/test-evidence.txt
 
+      # DemoActivity vive apenas em src/debug (não entra no APK). Compilar a
+      # variante debug aqui evita que ela apodreça sem ninguém notar.
+      - name: Compilar Kotlin da variante debug (demo de interface)
+        continue-on-error: true
+        working-directory: android
+        run: gradle --no-daemon compileDebugKotlin 2>&1 | tail -40
+
       - name: Compilar APK release
         working-directory: android
         run: |
