@@ -34,6 +34,33 @@ processo nativo do próprio app:
 * **Segundo plano**: serviço em primeiro plano + wake lock + Wi-Fi lock, com notificação
   permanente mostrando jogadores e porta.
 
+## Interface da versão 1.4.2
+
+A interface foi refeita com o kit visual de `compose/MoboDesign.kt` (o mesmo de `reference.png`)
+e agora está ligada aos dados e às ações reais do aplicativo. `compose/DemoActivity.kt` e
+`preview/` continuam servindo só para conferir o desenho: `DemoActivity` ficou em
+`android/app/src/debug/` e não entra no APK publicado.
+
+* **Um adaptador, nenhum segundo controlador**: `ui/PanelViewModel.kt` observa
+  `ServerController.state` e `Store.config` e implementa os 19 métodos de `PanelActions`
+  (ligar/parar, escolher mundo, importar, copiar endereço, internet, ajuda, opções do mundo,
+  copiar/limpar log, diagnóstico, chat, nome, porta, máximo de jogadores, distância de visão,
+  jogo, avançado e aparência). A camada visual não importa `Store`.
+* **Mundos**: miniatura real (`world_icon.jpeg`, reduzida e cacheada por data do arquivo) ou
+  "Sem imagem do mundo"; "Selecionado" e "Em execução" são estados diferentes; trocar de mundo
+  fica bloqueado durante início, execução e parada; exportar/validar/excluir exigem o servidor
+  parado; excluir pede confirmação e nunca apaga o mundo em uso.
+* **Jogadores**: nick e cabeça reais vindos do servidor, em nearest-neighbor e cacheados por
+  hash da skin; o ping é a mediana dos RTT válidos e aparece "—" quando o transporte não mede.
+  As três barras seguem a convenção <80 ms, <160 ms e ≥160 ms e são só indicação visual.
+* **Claro, escuro e sistema**: preferência em `moboserver_ui` (`ui/UiPrefs.kt`), fora de
+  `ServerConfig` — mudar o tema não pode reescrever a configuração nem perder a seleção.
+* **Subpáginas**: Acesso pela internet, Como seus amigos entram, Jogo, Aparência e Avançado
+  (autenticação, UPnP, RakNet legado, domínio próprio, túnel/relay, diagnóstico avançado,
+  expulsar/banir e lista de banidos).
+* **Sem inventar estado**: "Não verificado" até um teste externo real; "Online" só depois do
+  evento do servidor; nada de desenhar relógio, bateria ou gesto; alvos de toque ≥ 48 dp.
+
 ## Correções da versão 1.4.1
 
 * **Seleção de mundo**: passou a existir uma única fonte de verdade (`ServerController.selectWorld`),
@@ -93,9 +120,9 @@ processo nativo do próprio app:
 
 | Arquivo | Tamanho | SHA-256 |
 | --- | --- | --- |
-| [`releases_apk/MoboServer-v1.4.1-android-arm64.zip`](releases_apk/MoboServer-v1.4.1-android-arm64.zip) | 18,8 MB | `5f9764e1879e30babb20c9b87942e8c630a9bc80f317877d7e2d22e93704ff87` |
+| [`releases_apk/MoboServer-v1.4.2-android-arm64.zip`](releases_apk/MoboServer-v1.4.2-android-arm64.zip) | ~19 MB | *(preenchido automaticamente pelo build)* |
 
-O ZIP contém `MoboServer-v1.4.1.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
+O ZIP contém `MoboServer-v1.4.2.apk`, `LEIA-ME.txt` e `LICENSE`. O APK é assinado
 (`apksigner verify` roda no CI) e as próximas versões instalam por cima desta.
 
 ## Instalação
@@ -104,7 +131,7 @@ Copie o APK do ZIP para o celular e abra o arquivo — o Android vai pedir permi
 instalar apps de fontes desconhecidas. Para conferir o download, compare o SHA-256 acima:
 
 ```bash
-sha256sum MoboServer-v1.4.1-android-arm64.zip
+sha256sum MoboServer-v1.4.2-android-arm64.zip
 ```
 
 ## Quem consegue entrar
@@ -275,6 +302,18 @@ a mensagem de erro do servidor.
 * Testes novos: interfaces injetadas, coleta de ICE pela lista injetada, SDP,
   faixa de portas e chave P-384. O self-test falha se a sinalização ou o ICE não
   funcionarem.
+
+### 1.4.2
+
+* **Nova interface**: telas Material antigas (`HomeScreen`, `WorldsScreen`, `ConsoleScreen`,
+  `ConnectionScreen`, `SettingsScreen`, `Components`) substituídas pelo painel do kit
+  `MoboDesign`, ligado ao servidor por `ui/PanelViewModel.kt` (nenhum segundo controlador).
+* `DemoActivity` movida para `android/app/src/debug/`: a demonstração não entra no APK.
+* Tema claro/escuro/sistema em `ui/UiPrefs.kt`, separado de `ServerConfig`.
+* Diálogos de nome, porta, jogo e aparência; subpáginas de internet, ajuda e avançado.
+* Exportar, validar e excluir mundo com confirmação e bloqueio do mundo em uso.
+* O diagnóstico compartilhado passou a incluir o detalhe técnico da falha de início.
+* Dependência `androidx.lifecycle:lifecycle-viewmodel-compose` para o adaptador observável.
 
 ### 1.4.1
 

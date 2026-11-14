@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DemoActivity (arquivos/compose/DemoActivity.kt) existe apenas para avaliar a
+  interface com dados fictícios. Ela NÃO é declarada no manifesto de release,
+  portanto não aparece nem pode ser aberta no APK publicado.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="com.moboserver.design.DemoActivity"
+            android:exported="true"
+            android:label="MoboServer (demonstração de interface)" />
+    </application>
+</manifest>

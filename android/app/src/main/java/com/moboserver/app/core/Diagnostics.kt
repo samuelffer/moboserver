@@ -69,6 +69,13 @@ object Diagnostics {
         appendLine("Info: ${state.info}")
         appendLine("Exposure: ${state.exposure}")
         appendLine("Erro: ${state.error ?: "nenhum"}")
+        // O detalhe técnico da falha de início só existe aqui: o cartão da
+        // interface mostra apenas título e mensagem.
+        state.failure?.let { failure ->
+            appendLine("Falha: ${failure.problem} — ${failure.title}")
+            appendLine("Mensagem: ${failure.message}")
+            if (failure.technical.isNotBlank()) appendLine("Detalhe técnico: ${failure.technical}")
+        }
         appendLine()
         appendLine("-- Log (ultimas 120 linhas) --")
         val file = File(context.filesDir, "server.log")
