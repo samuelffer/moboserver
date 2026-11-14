@@ -1,9 +1,9 @@
 MoboServer - evidencias automatizadas do ultimo build verde
-Commit: 61a50dbd675a531768be62f91602a445e5f7a24c
-Data: 2026-11-14T02:15:55Z
+Commit: cccc210bfbd73385d2ceaab03b435144609b0b88
+Data: 2026-11-14T02:28:34Z
 
-ok  	github.com/samuelffer/moboserver/server	0.125s
-ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.238s
+ok  	github.com/samuelffer/moboserver/server	0.170s
+ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.234s
 --- PASS: TestAvatarFaceCrop (0.00s)
 --- PASS: TestAvatarOuterLayerOverlay (0.00s)
 --- PASS: TestAvatarSemiTransparentOverlay (0.00s)
@@ -17,47 +17,47 @@ ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.238s
 --- PASS: TestAvatarGeometryWithoutHeadCube (0.00s)
 --- PASS: TestAvatarPersonaWithGeometry (0.00s)
 --- PASS: TestAvatarModelLimits (0.00s)
---- PASS: TestLevelDatAcceptsDottedTag (0.00s)
---- PASS: TestLevelDatAcceptsEditorTag (0.00s)
+--- PASS: TestLevelDatAcceptsDottedTag (0.01s)
+--- PASS: TestLevelDatAcceptsEditorTag (0.07s)
 --- PASS: TestLevelDatWithoutExtraTagsNeedsNoFix (0.00s)
---- PASS: TestValidateWorldCodes (0.00s)
+--- PASS: TestValidateWorldCodes (0.01s)
     --- PASS: TestValidateWorldCodes/arquivo_invalido (0.00s)
     --- PASS: TestValidateWorldCodes/level.dat_truncado (0.00s)
     --- PASS: TestValidateWorldCodes/importacao_incompleta (0.00s)
     --- PASS: TestValidateWorldCodes/db_vazio (0.00s)
-    --- PASS: TestValidateWorldCodes/mundo_valido_com_tag_extra (0.00s)
+    --- PASS: TestValidateWorldCodes/mundo_valido_com_tag_extra (0.01s)
 --- PASS: TestNbtSkipRejectsTruncated (0.00s)
-ok  	github.com/samuelffer/moboserver/server	0.120s
+ok  	github.com/samuelffer/moboserver/server	0.182s
 {"lvl":"info","msg":"Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em \u003c1 ms (nome \"MoboSelfTest\", protocolo 2225)","t":"log"}
-{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.219, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.219/20, eth0/fe80::7e1e:52ff:fe22:b25c/64)","t":"log"}
+{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.107, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.107/20, eth0/fe80::72a8:a5ff:fe1c:1ae9/64)","t":"log"}
 selftest: surface block at spawn: block.Grass
 selftest: sinalizacao NetherNet ok em TCP 19132 (GET /v1/join 200, nome "MoboSelfTest", protocolo 2225)
-selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.219, 172.17.0.1)
+selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.107, 172.17.0.1)
 SELFTEST OK
 {"lvl":"info","msg":"Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em \u003c1 ms (nome \"MoboSelfTest\", protocolo 2225)","t":"log"}
-{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.219, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.219/20, eth0/fe80::7e1e:52ff:fe22:b25c/64)","t":"log"}
+{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.107, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.107/20, eth0/fe80::72a8:a5ff:fe1c:1ae9/64)","t":"log"}
 selftest: surface block at spawn: block.Grass
 selftest: sinalizacao NetherNet ok em TCP 19555 (GET /v1/join 200, nome "MoboSelfTest", protocolo 2225)
-selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.219, 172.17.0.1)
+selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.107, 172.17.0.1)
 SELFTEST OK
 {"lvl":"info","msg":"Listener RakNet ativo: UDP :19134 (compatibilidade e descoberta na rede local)","t":"log"}
 {"lvl":"info","msg":"Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em \u003c1 ms (nome \"MoboSelfTest\", protocolo 2225)","t":"log"}
-{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.219, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.219/20, eth0/fe80::7e1e:52ff:fe22:b25c/64)","t":"log"}
+{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.107, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.107/20, eth0/fe80::72a8:a5ff:fe1c:1ae9/64)","t":"log"}
 selftest: surface block at spawn: block.Grass
-selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;630664469500917722;;Survival;1;19134;19134;0;0;
-selftest: interface eth0 (10.1.0.219) respondeu no ping
+selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;7807832029510057934;;Survival;1;19134;19134;0;0;
+selftest: interface eth0 (10.1.0.107) respondeu no ping
 selftest: sinalizacao NetherNet ok em TCP 19134 (GET /v1/join 200, nome "MoboSelfTest", protocolo 2225)
-selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.219, 172.17.0.1)
+selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.107, 172.17.0.1)
 SELFTEST OK
 {"lvl":"info","msg":"Listener RakNet ativo: UDP :19136 (compatibilidade e descoberta na rede local)","t":"log"}
 {"lvl":"info","msg":"Sinalizacao NetherNet ok: GET /v1/join respondeu 200 em \u003c1 ms (nome \"MoboSelfTest\", protocolo 2225)","t":"log"}
-{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.219, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.219/20, eth0/fe80::7e1e:52ff:fe22:b25c/64)","t":"log"}
+{"lvl":"info","msg":"ICE ok: 4 candidato(s) UDP, host em 10.1.0.107, 172.17.0.1 (interfaces: docker0/172.17.0.1/16, eth0/10.1.0.107/20, eth0/fe80::72a8:a5ff:fe1c:1ae9/64)","t":"log"}
 selftest: surface block at spawn: block.Grass
-selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;7852326118530394423;;Survival;1;19136;19136;0;0;
-selftest: interface eth0 (10.1.0.219) respondeu no ping
+selftest: pong: MCPE;MoboSelfTest;2225;1.26.60;0;4;2191039062628551166;;Survival;1;19136;19136;0;0;
+selftest: interface eth0 (10.1.0.107) respondeu no ping
 selftest: sinalizacao NetherNet ok em TCP 19136 (GET /v1/join 200, nome "MoboSelfTest", protocolo 2225)
-selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.219, 172.17.0.1)
-selftest: tunel ok, porta publica 51715 respondeu ao ping RakNet
+selftest: ICE ok (4 candidatos via netlink, host em 10.1.0.107, 172.17.0.1)
+selftest: tunel ok, porta publica 49154 respondeu ao ping RakNet
 SELFTEST OK
 
 == Testes de JVM do app (selecao de mundo / mesclagem de configuracao) ==
