@@ -25,6 +25,10 @@ data class ServerConfig(
     val relayToken: String = "",
     /** Usa TLS na conexão de controle do túnel. */
     val relayTls: Boolean = true,
+    /** IPv4 público do relay, anunciado nos candidatos ICE (modo por faixa). */
+    val relayPublicIp: String = "",
+    /** Portas UDP públicas pedidas ao relay; 0 = mux do relay desligado. */
+    val relayUdpPorts: Int = 0,
     /** Aceita subir sem verificação de conta quando o login Xbox falha. */
     val allowOpenMode: Boolean = false,
     /**

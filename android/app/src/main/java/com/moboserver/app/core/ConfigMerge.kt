@@ -28,6 +28,8 @@ object ConfigMerge {
         relayAddr = draft.relayAddr,
         relayToken = draft.relayToken,
         relayTls = draft.relayTls,
+        relayPublicIp = draft.relayPublicIp,
+        relayUdpPorts = draft.relayUdpPorts,
         allowOpenMode = draft.allowOpenMode,
         rakNet = draft.rakNet,
         advancedDiagnostics = draft.advancedDiagnostics,

@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -84,6 +85,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -199,7 +201,12 @@ fun MoboPanel(
     }
     MoboUiTheme(dark) {
             Column(Modifier.fillMaxSize().background(C.bg).safeDrawingPadding().imePadding()) {
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+                // Uma posição de rolagem por aba: a chave do rememberSaveable
+                // inclui a página, então cada uma guarda e restaura a sua.
+                val scroll = rememberSaveable(key = "rolagem-" + current.name, saver = ScrollState.Saver) {
+                    ScrollState(0)
+                }
+                Column(Modifier.weight(1f).verticalScroll(scroll).padding(horizontal = 20.dp)) {
                     Spacer(Modifier.height(20.dp))
                     // Fade + deslocamento discreto (6 dp) entre abas; a duração
                     // respeita a escala de animação do sistema (0 = sem animação).
@@ -212,12 +219,18 @@ fun MoboPanel(
                         },
                         label = "paginas",
                     ) { shown ->
-                        when (shown) {
-                            Page.Home -> Home(state, actions) { go(Page.Players) }
-                            Page.Worlds -> Worlds(state, actions)
-                            Page.Console -> Console(state, actions)
-                            Page.Settings -> Settings(state, actions)
-                            Page.Players -> Players(state, actions) { go(Page.Home) }
+                        // O conteúdo do AnimatedContent é medido como um único
+                        // filho: sem esta Column, cada irmão da página (título,
+                        // cartões, botões) era posicionado na mesma origem e os
+                        // elementos apareciam sobrepostos.
+                        Column(Modifier.fillMaxWidth()) {
+                            when (shown) {
+                                Page.Home -> Home(state, actions) { go(Page.Players) }
+                                Page.Worlds -> Worlds(state, actions)
+                                Page.Console -> Console(state, actions)
+                                Page.Settings -> Settings(state, actions)
+                                Page.Players -> Players(state, actions) { go(Page.Home) }
+                            }
                         }
                     }
                     Spacer(Modifier.height(24.dp))
@@ -226,6 +239,16 @@ fun MoboPanel(
             }
         }
 }
+
+/** Cores do slider na paleta do app (o padrão do Material usa roxo). */
+@Composable
+private fun moboSliderColors() = SliderDefaults.colors(
+    thumbColor = C.green,
+    activeTrackColor = C.green,
+    inactiveTrackColor = C.line,
+    activeTickColor = C.card,
+    inactiveTickColor = C.muted,
+)
 
 /** Duração (ms) coerente com a escala de animação do sistema. */
 @Composable
@@ -254,16 +277,46 @@ fun MoboUiTheme(dark: Boolean, content: @Composable () -> Unit) {
             colorScheme = if (dark) {
                 darkColorScheme(
                     primary = palette.green,
+                    onPrimary = Color(0xFF08210F),
+                    primaryContainer = palette.soft,
+                    onPrimaryContainer = palette.ink,
+                    secondary = palette.green,
+                    onSecondary = Color(0xFF08210F),
                     background = palette.bg,
+                    onBackground = palette.ink,
                     surface = palette.card,
                     onSurface = palette.ink,
+                    surfaceVariant = palette.soft,
+                    onSurfaceVariant = palette.muted,
+                    outline = palette.line,
+                    outlineVariant = palette.line,
+                    error = Color(0xFFFF948A),
+                    onError = Color(0xFF2A0909),
+                    inverseSurface = palette.ink,
+                    inverseOnSurface = palette.card,
+                    inversePrimary = Color(0xFF126A34),
                 )
             } else {
                 lightColorScheme(
                     primary = palette.green,
+                    onPrimary = Color.White,
+                    primaryContainer = palette.soft,
+                    onPrimaryContainer = palette.ink,
+                    secondary = palette.green,
+                    onSecondary = Color.White,
                     background = palette.bg,
+                    onBackground = palette.ink,
                     surface = palette.card,
                     onSurface = palette.ink,
+                    surfaceVariant = palette.soft,
+                    onSurfaceVariant = palette.muted,
+                    outline = palette.line,
+                    outlineVariant = palette.line,
+                    error = Color(0xFFB3261E),
+                    onError = Color.White,
+                    inverseSurface = palette.ink,
+                    inverseOnSurface = palette.card,
+                    inversePrimary = Color(0xFF86DCA6),
                 )
             },
             content = content,
@@ -506,7 +559,12 @@ private fun kindLabel(kind: String): String = when (kind) {
             if (visible.isEmpty()) {
                 Text("Sem registros nesta sessão.", color = C.muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 16.dp))
             } else {
-                LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().height(340.dp)) {
+                // Altura limitada: uma LazyColumn dentro de um contêiner vertical
+                // rolável não pode receber altura infinita.
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp, max = 340.dp),
+                ) {
                     items(visible, key = { it.id }) { line ->
                         LogRow(line)
                     }
@@ -530,11 +588,13 @@ private fun kindLabel(kind: String): String = when (kind) {
     }
     Gap()
     Group {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            Tool(Icons.Outlined.ContentCopy, "Copiar", a::copyLogs)
-            Tool(Icons.Outlined.Share, "Exportar", a::exportLogs)
-            Tool(Icons.Outlined.MonitorHeart, "Diagnóstico", a::diagnostics)
-            Tool(Icons.Outlined.DeleteOutline, "Limpar", a::clearVisibleLogs)
+        // Espaço dividido igualmente: cada ação ocupa 1/4 da linha, inclusive
+        // com fonte ampliada (o texto quebra em até duas linhas).
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Tool(Icons.Outlined.ContentCopy, "Copiar", a::copyLogs, Modifier.weight(1f))
+            Tool(Icons.Outlined.Share, "Exportar", a::exportLogs, Modifier.weight(1f))
+            Tool(Icons.Outlined.MonitorHeart, "Diagnóstico", a::diagnostics, Modifier.weight(1f))
+            Tool(Icons.Outlined.DeleteOutline, "Limpar", a::clearVisibleLogs, Modifier.weight(1f))
         }
     }
     Note("Limpar apaga só esta visualização; o servidor e o log em disco continuam.")
@@ -621,9 +681,30 @@ private fun kindLabel(kind: String): String = when (kind) {
     if (s.phase != Phase.Running) Note("O chat só envia com o servidor online.")
 }
 
-@Composable private fun Tool(icon: ImageVector, label: String, action: () -> Unit) {
-    Column(Modifier.clickable(onClick = action).padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(icon, null, tint = C.ink); Text(label, color = C.ink, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+@Composable
+private fun Tool(
+    icon: ImageVector,
+    label: String,
+    action: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = action)
+            .padding(horizontal = 4.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(icon, null, tint = C.ink, modifier = Modifier.size(22.dp))
+        Text(
+            label,
+            color = C.ink,
+            fontSize = 12.sp,
+            lineHeight = 15.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            modifier = Modifier.padding(top = 6.dp),
+        )
     }
 }
 
@@ -633,10 +714,24 @@ private fun kindLabel(kind: String): String = when (kind) {
     Label("DESEMPENHO"); Group {
         var max by remember(s.maxPlayers) { mutableFloatStateOf(s.maxPlayers.toFloat().coerceIn(1f, 5f)) }
         Entry(Icons.Outlined.People, "Máximo de jogadores", max.toInt().toString())
-        Slider(value = max, onValueChange = { max = it }, onValueChangeFinished = { a.setMaxPlayers(max.toInt()) }, valueRange = 1f..5f, steps = 3)
+        Slider(
+            value = max,
+            onValueChange = { max = it },
+            onValueChangeFinished = { a.setMaxPlayers(max.toInt()) },
+            valueRange = 1f..5f,
+            steps = 3,
+            colors = moboSliderColors(),
+        )
         Rule(); var view by remember(s.viewDistance) { mutableFloatStateOf(s.viewDistance.toFloat().coerceIn(4f, 16f)) }
         Entry(Icons.Outlined.Visibility, "Distância de visão", "${view.toInt()} chunks")
-        Slider(value = view, onValueChange = { view = it }, onValueChangeFinished = { a.setViewDistance(view.toInt()) }, valueRange = 4f..16f, steps = 11)
+        Slider(
+            value = view,
+            onValueChange = { view = it },
+            onValueChangeFinished = { a.setViewDistance(view.toInt()) },
+            valueRange = 4f..16f,
+            steps = 11,
+            colors = moboSliderColors(),
+        )
     }
     Note("Valores menores aliviam o celular."); Gap()
     Group { Entry(Icons.Outlined.SportsEsports, "Jogo", onClick = a::gameSettings); Rule(); Entry(Icons.Outlined.DarkMode, "Aparência", onClick = a::changeAppearance); Rule(); Entry(Icons.Outlined.Tune, "Avançado", onClick = a::advancedSettings) }

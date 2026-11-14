@@ -1246,15 +1246,30 @@ object ServerController {
         "-log-level", if (config.advancedDiagnostics) "debug" else "info",
     ) + tunnelArgs(config)
 
-    /** Extra flags for the optional reverse tunnel (empty when not configured). */
+    /**
+     * Flags do túnel. Os dois modos são separados de propósito:
+     *
+     *  - `-tunnel` aponta para o controle do MOBOTUN/1 (RakNet, uma porta UDP);
+     *  - `-relay-udp-ports` liga o MOBOTUN/2 (uma porta pública por conexão ICE)
+     *    e exige `-relay-public-ip`, o IPv4 público anunciado nos candidatos.
+     *
+     * Sem endereço de relay nada é enviado: o servidor sobe e atende só a LAN.
+     */
     private fun tunnelArgs(config: ServerConfig): List<String> {
         val relay = config.relayAddr.trim()
         if (relay.isBlank()) return emptyList()
-        return listOf(
+        val args = mutableListOf(
             "-tunnel", relay,
             "-tunnel-token", config.relayToken.trim(),
             "-tunnel-tls=${config.relayTls}",
         )
+        val publicIp = config.relayPublicIp.trim()
+        val ports = config.relayUdpPorts
+        if (ports > 0 && publicIp.isNotBlank()) {
+            args += "-relay-udp-ports=$ports"
+            args += "-relay-public-ip=$publicIp"
+        }
+        return args
     }
 
     /**

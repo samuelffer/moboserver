@@ -159,20 +159,24 @@ func (r *UDPRelay) openPorts(n int) ([]*net.UDPConn, error) {
 		return nil, fmt.Errorf("quantidade de portas inválida: %d", n)
 	}
 	conns := make([]*net.UDPConn, 0, n)
-	for i := 0; i < n; i++ {
-		addr := &net.UDPAddr{}
-		if r.PortRange[0] != 0 {
-			addr.Port = r.PortRange[0] + i
-			if r.PortRange[1] != 0 && addr.Port > r.PortRange[1] {
+	// Percorre a faixa inteira em vez de assumir que começa livre: a segunda
+	// instalação simplesmente recebe as próximas portas, e uma porta ocupada não
+	// derruba a sessão inteira.
+	for port := r.PortRange[0]; len(conns) < n; port++ {
+		if r.PortRange[0] == 0 {
+			conn, err := net.ListenUDP("udp", &net.UDPAddr{})
+			if err != nil {
 				break
 			}
+			conns = append(conns, conn)
+			continue
 		}
-		conn, err := net.ListenUDP("udp", addr)
+		if r.PortRange[1] != 0 && port > r.PortRange[1] {
+			break
+		}
+		conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: port})
 		if err != nil {
-			for _, c := range conns {
-				_ = c.Close()
-			}
-			return nil, fmt.Errorf("abrir porta UDP %d: %w", addr.Port, err)
+			continue
 		}
 		conns = append(conns, conn)
 	}

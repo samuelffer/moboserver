@@ -26,6 +26,8 @@ object ConfigCodec {
         put("relayAddr", c.relayAddr)
         put("relayToken", c.relayToken)
         put("relayTls", c.relayTls)
+        put("relayPublicIp", c.relayPublicIp)
+        put("relayUdpPorts", c.relayUdpPorts)
         put("allowOpenMode", c.allowOpenMode)
         put("rakNet", c.rakNet)
         put("advancedDiagnostics", c.advancedDiagnostics)
@@ -56,6 +58,8 @@ object ConfigCodec {
             relayAddr = o.readString("relayAddr", defaults.relayAddr).trim(),
             relayToken = o.readString("relayToken", defaults.relayToken).trim(),
             relayTls = o.readBool("relayTls", defaults.relayTls),
+            relayPublicIp = o.readString("relayPublicIp", defaults.relayPublicIp),
+            relayUdpPorts = o.readInt("relayUdpPorts", defaults.relayUdpPorts).coerceIn(0, 32),
             allowOpenMode = o.readBool("allowOpenMode", defaults.allowOpenMode),
             rakNet = o.readBool("rakNet", defaults.rakNet),
             advancedDiagnostics = o.readBool("advancedDiagnostics", defaults.advancedDiagnostics),
