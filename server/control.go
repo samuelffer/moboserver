@@ -42,6 +42,7 @@ type playerEntry struct {
 	playerInfo
 	handle     *world.EntityHandle
 	avatarHash string
+	avatarRev  int64
 }
 
 // registry keeps track of the players that are currently online. Player
@@ -77,6 +78,19 @@ func (r *registry) setAvatar(id uuid.UUID, hash string) {
 	if e, ok := r.m[id]; ok {
 		e.avatarHash = hash
 	}
+}
+
+// nextAvatarRev avanca a revisao do avatar do jogador. A revisao permite ao app
+// descartar uma imagem antiga que terminou de decodificar depois de uma troca
+// de skin.
+func (r *registry) nextAvatarRev(id uuid.UUID) int64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if e, ok := r.m[id]; ok {
+		e.avatarRev++
+		return e.avatarRev
+	}
+	return 0
 }
 
 func (r *registry) avatarHash(id uuid.UUID) string {
@@ -158,7 +172,28 @@ func (h *joinHandler) HandleSkinChange(ctx *player.Context, s *skin.Skin) {
 		return
 	}
 	p := ctx.Player()
-	h.rt.emitAvatar(p.UUID(), p.Name(), p.XUID(), *s)
+	h.rt.emitAvatar(p.UUID(), p.Name(), p.XUID(), *s, true)
+}
+
+// HandleChat entrega ao app as mensagens escritas pelos jogadores. A mensagem
+// continua indo para o chat global do jogo (o handler padrão não é substituído
+// aqui), portanto o app não precisa deduzir chat a partir do log.
+func (h *joinHandler) HandleChat(ctx *player.Context, message *string) {
+	if h.rt == nil || message == nil {
+		return
+	}
+	p := ctx.Player()
+	text := strings.TrimSpace(*message)
+	if text == "" {
+		return
+	}
+	emit(map[string]any{
+		"t":       "chat",
+		"from":    p.Name(),
+		"xuid":    p.XUID(),
+		"msg":     text,
+		"session": h.rt.startedAt,
+	})
 }
 
 func (h *joinHandler) HandleQuit(p *player.Player) {
@@ -177,6 +212,9 @@ type command struct {
 	Name string `json:"name"`
 	XUID string `json:"xuid"`
 	Msg  string `json:"msg"`
+	// ID identifica o pedido de chat do app e volta em "chat_sent", para a
+	// interface não marcar como enviada uma mensagem que se perdeu.
+	ID string `json:"id"`
 }
 
 func (rt *runtime) commandLoop(ctx context.Context) {
@@ -229,21 +267,52 @@ func (rt *runtime) handleCommand(c command) {
 		} else {
 			emitLog("info", "Banimento removido para o XUID "+c.XUID)
 		}
+	case "avatar":
+		rt.resendAvatar(c.Name)
 	case "say":
 		msg := strings.TrimSpace(c.Msg)
 		if msg == "" {
 			return
 		}
 		chat.Global.WriteString("§7[Servidor] §f" + msg)
+		// A confirmação só sai depois de o chat aceitar a escrita; o app fica
+		// com o texto intacto se nenhum "chat_sent" chegar.
+		emit(map[string]any{"t": "chat_sent", "id": c.ID, "ok": true, "msg": msg})
 		emitLog("info", "[Servidor] "+msg)
 	case "save":
-		rt.saveAll()
-		emitLog("info", "Mundo salvo em disco.")
+		if rt.saveAll() {
+			emitLog("info", "Mundo salvo em disco.")
+		} else {
+			emitLog("error", "Falha ao salvar o mundo em disco.")
+		}
 	case "stop":
 		rt.stop()
 	default:
 		emitLog("warn", "Comando desconhecido: "+c.Cmd)
 	}
+}
+
+// resendAvatar reenvia a miniatura quando o app pede (evento perdido, app
+// aberto depois do join ou consumidor sem a imagem). E sob demanda: o tick de
+// ping não carrega PNG.
+func (rt *runtime) resendAvatar(name string) {
+	entry, ok := rt.reg.byName(name)
+	if !ok {
+		emitLog("debug", "Avatar pedido para jogador que não está online: "+name)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	var id uuid.UUID
+	s, err := player.Call(ctx, entry.handle, func(tx *world.Tx, p *player.Player) (skin.Skin, error) {
+		id = p.UUID()
+		return p.Skin(), nil
+	})
+	if err != nil {
+		emitLog("warn", "Não foi possível reenviar o avatar de "+entry.Name+": "+err.Error())
+		return
+	}
+	rt.emitAvatar(id, entry.Name, entry.XUID, s, true)
 }
 
 func (rt *runtime) kick(name, reason string) bool {
@@ -302,16 +371,33 @@ func (rt *runtime) disconnect(h *world.EntityHandle, reason string) error {
 	return err
 }
 
-func (rt *runtime) saveAll() {
+// saveAll grava os mundos e só então anuncia o salvamento concluído. O app
+// mostra "Último salvamento" a partir deste evento; nenhuma mensagem de log é
+// usada como prova de sucesso.
+func (rt *runtime) saveAll() bool {
+	ok := true
 	for _, w := range []*world.World{rt.srv.World(), rt.srv.Nether(), rt.srv.End()} {
 		if w == nil {
 			continue
 		}
-		func() {
-			defer func() { _ = recover() }()
+		if saved := func() (saved bool) {
+			defer func() {
+				if recover() != nil {
+					saved = false
+				}
+			}()
 			w.Save()
-		}()
+			return true
+		}(); !saved {
+			ok = false
+		}
 	}
+	if !ok {
+		emit(map[string]any{"t": "save_failed"})
+		return false
+	}
+	emit(map[string]any{"t": "saved", "at": time.Now().UnixMilli()})
+	return true
 }
 
 // banList is a small persistent set of banned XUIDs. It is stored as JSON next

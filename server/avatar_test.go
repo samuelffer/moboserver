@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
+	"strings"
 	"testing"
 
 	"github.com/df-mc/dragonfly/server/player/skin"
@@ -190,5 +192,122 @@ func TestAvatarHashChangesWithSkin(t *testing.T) {
 	second := renderAvatar(s)
 	if first.Hash == second.Hash {
 		t.Fatalf("hash não mudou com a skin: %s", first.Hash)
+	}
+}
+
+// geometryJSON monta um modelo mínimo no formato do jogo.
+func geometryJSON(identifier string, textureWidth float64, cubes ...string) []byte {
+	tw := ""
+	if textureWidth > 0 {
+		tw = fmt.Sprintf(`,"texture_width":%g,"texture_height":%g`, textureWidth, textureWidth)
+	}
+	return []byte(fmt.Sprintf(
+		`{"format_version":"1.12.0","minecraft:geometry":[{"description":{"identifier":%q%s},`+
+			`"bones":[{"name":"head","pivot":[0,24,0],"cubes":[%s]}]}]}`,
+		identifier, tw, strings.Join(cubes, ","),
+	))
+}
+
+func cube(uvX, uvY float64, size, inflate float64) string {
+	return fmt.Sprintf(`{"origin":[-4,24,-4],"size":[%g,%g,%g],"uv":[%g,%g],"inflate":%g}`,
+		size, size, size, uvX, uvY, inflate)
+}
+
+// TestAvatarGeometryHeadCube prova que o recorte vem do cubo da cabeça enviado
+// no modelo, e não de uma busca por palavra no JSON.
+func TestAvatarGeometryHeadCube(t *testing.T) {
+	s := skin.New(64, 64)
+	face := color.RGBA{R: 12, G: 34, B: 56, A: 255}
+	fillSkin(&s, 8, 8, 8, face)
+	s.Model = geometryJSON("geometry.humanoid.customSlim", 64, cube(0, 0, 8, 0))
+	s.ModelConfig.Default = "geometry.humanoid.customSlim"
+
+	res := renderAvatar(s)
+	img := decodeAvatar(t, res)
+	if !res.Info.HeadCube || !res.Info.Rendered {
+		t.Fatalf("diagnóstico sem cubo de cabeça: %+v", res.Info)
+	}
+	if got := rgbaAt(img, 0, 0); got.R != face.R || got.G != face.G || got.B != face.B {
+		t.Fatalf("rosto fora da UV do cubo: %v", got)
+	}
+	if res.Info.TexWidth != 64 || res.Info.PixelBytes != 64*64*4 {
+		t.Fatalf("diagnóstico sem dimensões: %+v", res.Info)
+	}
+}
+
+// TestAvatarGeometryHatOverlay cobre a camada externa descrita no modelo.
+func TestAvatarGeometryHatOverlay(t *testing.T) {
+	s := skin.New(64, 64)
+	fillSkin(&s, 8, 8, 8, color.RGBA{R: 0, G: 0, B: 255, A: 255})
+	fillSkin(&s, 40, 8, 8, color.RGBA{R: 255, G: 0, B: 0, A: 255})
+	s.Model = geometryJSON("geometry.humanoid.custom", 64,
+		cube(0, 0, 8, 0),
+		cube(32, 0, 8, 0.5),
+	)
+	got := rgbaAt(decodeAvatar(t, renderAvatar(s)), 0, 0)
+	if got.R != 255 || got.B != 0 {
+		t.Fatalf("camada externa do modelo não foi composta: %v", got)
+	}
+}
+
+// TestAvatarGeometryDoubled128 usa as UVs do próprio modelo numa textura 128.
+func TestAvatarGeometryDoubled128(t *testing.T) {
+	s := skin.New(128, 128)
+	face := color.RGBA{R: 1, G: 2, B: 3, A: 255}
+	fillSkin(&s, 16, 16, 16, face)
+	// Geometria no espaço 64x64 sobre textura 128: as UVs dobram.
+	s.Model = geometryJSON("geometry.humanoid.custom", 64, cube(0, 0, 8, 0))
+	res := renderAvatar(s)
+	got := rgbaAt(decodeAvatar(t, res), 0, 0)
+	if got.R != face.R {
+		t.Fatalf("UV 128 não foi dobrada: %v (layout %s)", got, res.Layout)
+	}
+}
+
+// TestAvatarGeometryWithoutHeadCube recusa geometria personalizada incompleta
+// com motivo, em vez de recortar coordenadas fixas.
+func TestAvatarGeometryWithoutHeadCube(t *testing.T) {
+	s := skin.New(64, 64)
+	s.Model = []byte(`{"format_version":"1.12.0","minecraft:geometry":[{"description":` +
+		`{"identifier":"geometry.custom.gear"},"bones":[{"name":"body","cubes":[]}]}]}`)
+	res := renderAvatar(s)
+	if res.Available || !strings.Contains(res.Reason, "cabeça") {
+		t.Fatalf("esperava recusa com motivo da cabeça: %+v", res)
+	}
+	if res.Info.Geometry != "geometry.custom.gear" {
+		t.Fatalf("diagnóstico sem identificador: %+v", res.Info)
+	}
+}
+
+// TestAvatarPersonaWithGeometry tenta a renderização determinística quando o
+// modelo Persona traz a cabeça; sem ela, declara a limitação.
+func TestAvatarPersonaWithGeometry(t *testing.T) {
+	withGeometry := skin.New(64, 64)
+	withGeometry.Persona = true
+	fillSkin(&withGeometry, 8, 8, 8, color.RGBA{R: 200, G: 100, B: 50, A: 255})
+	withGeometry.Model = geometryJSON("persona.head", 64, cube(0, 0, 8, 0))
+	res := renderAvatar(withGeometry)
+	if !res.Available {
+		t.Fatalf("persona com cubo de cabeça deveria renderizar: %s", res.Reason)
+	}
+	if !res.Info.Persona {
+		t.Fatalf("diagnóstico deveria marcar persona: %+v", res.Info)
+	}
+
+	withoutGeometry := skin.New(64, 64)
+	withoutGeometry.Persona = true
+	res = renderAvatar(withoutGeometry)
+	if res.Available || !strings.Contains(res.Reason, "Persona") {
+		t.Fatalf("persona sem geometria precisa de motivo específico: %+v", res)
+	}
+}
+
+// TestAvatarModelLimits impede que um modelo gigante trave a sessão.
+func TestAvatarModelLimits(t *testing.T) {
+	s := skin.New(64, 64)
+	s.Model = []byte(strings.Repeat("x", maxAvatarModelBytes+1))
+	res := renderAvatar(s)
+	if res.Available || !strings.Contains(res.Reason, "grande demais") {
+		t.Fatalf("modelo gigante deveria ser recusado: %+v", res)
 	}
 }
