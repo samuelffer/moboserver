@@ -12,8 +12,10 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.moboserver.app.core.AvatarState
 import com.moboserver.app.core.BanEntry
 import com.moboserver.app.core.Bans
+import com.moboserver.app.core.ChatMessage
 import com.moboserver.app.core.Diagnostics
 import com.moboserver.app.core.Net
 import com.moboserver.app.core.RuntimeState
@@ -24,6 +26,9 @@ import com.moboserver.app.core.ServerStatus
 import com.moboserver.app.core.Store
 import com.moboserver.app.core.WorldInfo
 import com.moboserver.app.core.WorldRepository
+import com.moboserver.design.AvatarStateUi
+import com.moboserver.design.ChatUi
+import com.moboserver.design.LogUi
 import com.moboserver.design.PanelActions
 import com.moboserver.design.PanelUi
 import com.moboserver.design.Phase
@@ -57,8 +62,9 @@ sealed interface PanelDialog {
     data object Appearance : PanelDialog
     data class WorldMenu(val id: String, val name: String) : PanelDialog
     data class ConfirmDelete(val id: String, val name: String) : PanelDialog
-    /** Texto longo (resultado de teste) com rolagem. */
     data class Text(val title: String, val body: String) : PanelDialog
+    /** Explica por que a cabeça de um jogador não aparece (ou mostra o resumo). */
+    data class PlayerDetails(val id: String) : PanelDialog
 }
 
 /** Ações que precisam da Activity (seletor de arquivos, compartilhar). */
@@ -79,6 +85,8 @@ data class InternetInfo(
     val tunnelState: String = "",
     val tunnelAddress: String = "",
     val checking: Boolean = false,
+    val cgnat: Boolean = false,
+    val lastCheckAt: String = "",
 )
 
 /** Dados que o kit não modela e as subpáginas usam. */
@@ -126,6 +134,10 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
     private val _events = MutableSharedFlow<PanelEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<PanelEvent> = _events
 
+    /** true quando a lista de mundos já foi lida ao menos uma vez. */
+    private val _ready = MutableStateFlow(false)
+    val ready: StateFlow<Boolean> = _ready
+
     private var worldsCache: List<WorldUi> = emptyList()
     private var worldsInfo: List<WorldInfo> = emptyList()
     private var worldsSignature: String = ""
@@ -133,8 +145,9 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
     private var lanIp: String? = null
     private var lanIpJob: Job? = null
     private var worldsJob: Job? = null
-    private var lastLogCount = -1
-    private var lastLogsText = ""
+    private var lastLogId = -1L
+    private var logCache: List<LogUi> = emptyList()
+    private var chatCache: List<ChatUi> = emptyList()
 
     private data class Thumb(val modified: Long, val image: ImageBitmap)
 
@@ -169,25 +182,24 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
         val config = Store.snapshot()
 
         val players = runtime.players.map { player ->
+            val avatar = runtime.avatars[player.key]
             PlayerUi(
                 id = player.key,
                 name = player.name,
-                // pingMs < 0 = transporte sem medição: a interface mostra "—".
-                latencyMs = player.pingMs.takeIf { it > 0 },
-                head = runtime.avatars[player.key]?.image,
+                // pingMs < 0 = transporte sem medição; 0 é válido (<1 ms).
+                latencyMs = player.pingMs.takeIf { it >= 0 },
+                head = avatar?.image,
+                avatarState = when (avatar?.state) {
+                    AvatarState.READY -> AvatarStateUi.Ready
+                    AvatarState.UNSUPPORTED -> AvatarStateUi.Unsupported
+                    AvatarState.FAILED -> AvatarStateUi.Failed
+                    else -> AvatarStateUi.Loading
+                },
+                avatarReason = avatar?.reason.orEmpty(),
+                avatarInfo = avatar?.info?.summary().orEmpty(),
             )
         }
-        // "Ping dos jogadores" = mediana dos RTT válidos, não a média nem um
-        // valor inventado quando nenhum jogador foi medido.
-        val validRtt = runtime.players.map { it.pingMs }.filter { it > 0 }.sorted()
-        val median = when {
-            validRtt.isEmpty() -> null
-            validRtt.size % 2 == 1 -> validRtt[validRtt.size / 2]
-            else -> (validRtt[validRtt.size / 2 - 1] + validRtt[validRtt.size / 2]) / 2
-        }
 
-        // O kit mostra "Selecionado" no botão do mundo; "em execução" entra na
-        // linha secundária do cartão, que é o mesmo lugar do tamanho.
         val runningId = ServerController.runningWorldId
         val worldsUi = if (runningId == null) {
             worldsCache
@@ -197,11 +209,11 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        // Seleção apontando para uma pasta que não existe mais: a mensagem
-        // precisa dizer isso, não "selecione um mundo".
         val worldsLoaded = worldsSignature.isNotEmpty()
         val selectionMissing = worldsLoaded && config.activeWorldId.isNotBlank() &&
             worldsInfo.none { it.id == config.activeWorldId }
+
+        val address = addressInfo(runtime, config)
 
         _panel.value = PanelUi(
             phase = phaseOf(runtime.status),
@@ -209,14 +221,19 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
             worlds = worldsUi,
             players = players,
             serverName = config.serverName,
-            localAddress = lanIp ?: runtime.exposure.lanIp ?: "—",
+            lanAddress = address.lanIp ?: "—",
+            internetAddress = address.share,
+            internetKind = address.kind,
+            internetStatus = address.status,
             port = runtime.info?.port ?: config.port,
             maxPlayers = config.maxPlayers,
             viewDistance = config.viewDistance,
-            medianRttMs = median,
             uptime = uptimeOf(runtime),
-            internetStatus = internetStatus(runtime),
-            logs = logsText(runtime),
+            lastSave = lastSaveText(runtime),
+            gameMode = gameModeLabel(config.gameMode),
+            difficulty = difficultyLabel(config.difficulty),
+            logLines = logsOf(runtime),
+            chatMessages = chatOf(runtime),
             error = runtime.failure?.let { "${it.title}. ${it.message}" }
                 ?: if (selectionMissing) {
                     "O mundo selecionado não está mais no aparelho. Importe de novo ou escolha outro em Mundos."
@@ -239,9 +256,52 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
             relayToken = config.relayToken,
             relayTls = config.relayTls,
             externalHost = config.externalHost,
-            internet = internetInfo(runtime),
+            internet = internetInfo(runtime, address),
             bannedCount = _bans.value.size,
         )
+    }
+
+    /** Classifica o endereço: verificado, IP público observado, WAN do roteador ou só LAN. */
+    private data class Address(
+        val lanIp: String?,
+        val share: String,
+        val kind: String,
+        val status: String,
+        val cgnat: Boolean,
+    )
+
+    private fun addressInfo(runtime: RuntimeState, config: ServerConfig): Address {
+        val exposure = runtime.exposure
+        val port = runtime.info?.port ?: config.port
+        val local = lanIp ?: exposure.lanIp
+        val cgnat = local != null && Net.isCarrierGradeNat(local)
+        val publicIp = exposure.publicIp?.takeIf { it.isNotBlank() }
+        val wanIp = exposure.wanIp?.takeIf { it.isNotBlank() }
+        val verified = exposure.externalVerified == true
+
+        // 100.64/10 é CGNAT: nunca é endereço de entrada para amigos.
+        val usablePublic = publicIp?.takeIf { !Net.isCarrierGradeNat(it) }
+        val share = when {
+            verified && usablePublic != null -> "$usablePublic:$port"
+            usablePublic != null -> "$usablePublic:$port"
+            wanIp != null && !Net.isCarrierGradeNat(wanIp) -> "$wanIp:$port"
+            local != null -> "$local:$port"
+            else -> "—"
+        }
+        val kind = when {
+            verified && usablePublic != null -> "verificado"
+            usablePublic != null -> "observado"
+            wanIp != null && !Net.isCarrierGradeNat(wanIp) -> "wan"
+            local != null -> "local"
+            else -> "nenhum"
+        }
+        val status = when {
+            verified -> "Teste externo confirmou o acesso"
+            publicIp != null -> "Acesso não verificado"
+            cgnat -> "Rede da operadora (CGNAT): o endereço 100.64/10 não serve para amigos"
+            else -> "Não verificado"
+        }
+        return Address(local, share, kind, status, cgnat)
     }
 
     private fun phaseOf(status: ServerStatus): Phase = when (status) {
@@ -256,25 +316,56 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
         val started = runtime.startedAt ?: return "—"
         if (runtime.status != ServerStatus.RUNNING && runtime.status != ServerStatus.STOPPING) return "—"
         val seconds = ((System.currentTimeMillis() - started) / 1000).coerceAtLeast(0)
-        return String.format(
-            Locale.US,
-            "%02d:%02d:%02d",
-            seconds / 3600,
-            (seconds % 3600) / 60,
-            seconds % 60,
-        )
+        return String.format(Locale.US, "%02d:%02d:%02d", seconds / 3600, (seconds % 3600) / 60, seconds % 60)
     }
 
-    private fun internetStatus(runtime: RuntimeState): String = when (runtime.exposure.externalVerified) {
-        true -> "Teste externo confirmou o acesso"
-        false -> "Teste externo não alcançou o servidor"
-        null -> "Não verificado"
+    /** Só o evento de salvamento concluído conta; nada de inferir de log. */
+    private fun lastSaveText(runtime: RuntimeState): String {
+        val at = runtime.lastSaveAt
+        if (at <= 0L) return "—"
+        return SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(at))
     }
 
-    private fun internetInfo(runtime: RuntimeState): InternetInfo {
+    private fun logsOf(runtime: RuntimeState): List<LogUi> {
+        val last = runtime.logs.lastOrNull()
+        if (last == null) {
+            if (logCache.isNotEmpty()) logCache = emptyList()
+            lastLogId = -1L
+            return logCache
+        }
+        if (last.time == lastLogId && logCache.size == runtime.logs.size) return logCache
+        lastLogId = last.time
+        logCache = runtime.logs.mapIndexed { index, line ->
+            LogUi(id = line.time * 1000 + index, time = line.time, level = line.level, message = line.message)
+        }
+        return logCache
+    }
+
+    private fun chatOf(runtime: RuntimeState): List<ChatUi> {
+        val last = runtime.chat.lastOrNull()
+        if (last == null) {
+            if (chatCache.isNotEmpty()) chatCache = emptyList()
+            return chatCache
+        }
+        if (chatCache.size == runtime.chat.size && chatCache.lastOrNull()?.status == last.status) return chatCache
+        chatCache = runtime.chat.map {
+            ChatUi(
+                id = it.id,
+                time = it.at,
+                from = it.from,
+                text = it.text,
+                fromPanel = it.fromPanel,
+                status = it.status,
+            )
+        }
+        return chatCache
+    }
+
+    private fun internetInfo(runtime: RuntimeState, address: Address): InternetInfo {
         val exposure = runtime.exposure
+        val port = runtime.info?.port ?: Store.snapshot().port
         return InternetInfo(
-            lanAddress = (lanIp ?: exposure.lanIp ?: "—") + ":" + (runtime.info?.port ?: Store.snapshot().port),
+            lanAddress = (address.lanIp ?: "—") + ":" + port,
             wanAddress = exposure.wanIp ?: "—",
             publicAddress = exposure.publicIp ?: "—",
             routerNote = exposure.upnpMessage.orEmpty(),
@@ -287,17 +378,27 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
             tunnelState = exposure.tunnelState.orEmpty(),
             tunnelAddress = exposure.tunnelAddress.orEmpty(),
             checking = exposure.working,
+            cgnat = address.cgnat,
+            lastCheckAt = if (exposure.externalVerified == null) {
+                ""
+            } else {
+                SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date())
+            },
         )
     }
 
-    private fun logsText(runtime: RuntimeState): String {
-        if (runtime.logs.size == lastLogCount) return lastLogsText
-        lastLogCount = runtime.logs.size
-        val format = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-        lastLogsText = runtime.logs.takeLast(300).joinToString("\n") { line ->
-            "${format.format(Date(line.time))}  ${line.message}"
-        }
-        return lastLogsText
+    private fun gameModeLabel(value: String): String = when (value) {
+        "creative" -> "Criativo"
+        "adventure" -> "Aventura"
+        "spectator" -> "Espectador"
+        else -> "Sobrevivência"
+    }
+
+    private fun difficultyLabel(value: String): String = when (value) {
+        "peaceful" -> "Pacífico"
+        "easy" -> "Fácil"
+        "hard" -> "Difícil"
+        else -> "Normal"
     }
 
     // --------------------------------------------------------------------- mundos
@@ -322,8 +423,10 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
                 worldsSignature = payload.first
                 worldsInfo = payload.second
                 worldsCache = payload.third
-                rebuild()
             }
+            _ready.value = true
+            UiReadiness.ready = true
+            rebuild()
         }
     }
 
@@ -384,7 +487,6 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 e
             } finally {
-                // Libera o início do servidor mesmo com a importação cancelada.
                 ServerController.endImport()
             }
             if (result is WorldInfo) {
@@ -473,13 +575,49 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         override fun copyAddress() {
-            val address = _panel.value.localAddress
+            val panel = _panel.value
+            val address = panel.internetAddress
+            if (address.isBlank() || address == "—") {
+                showMessage("Ainda não há endereço para divulgar. Verifique o acesso externo.")
+                return
+            }
             copyToClipboard("Endereço do servidor", address)
-            showMessage("Endereço copiado: $address")
+            showMessage(
+                when (panel.internetKind) {
+                    "verificado" -> "Endereço copiado (acesso externo confirmado): $address"
+                    "observado" -> "Endereço copiado. Acesso externo ainda NÃO foi verificado: $address"
+                    "wan" -> "Endereço do roteador copiado. Acesso externo não verificado: $address"
+                    else -> "Endereço da rede local copiado (só no mesmo Wi-Fi): $address"
+                },
+            )
+        }
+
+        override fun shareAddress() {
+            val panel = _panel.value
+            val address = panel.internetAddress
+            if (address.isBlank() || address == "—") {
+                showMessage("Ainda não há endereço para compartilhar.")
+                return
+            }
+            val note = when (panel.internetKind) {
+                "verificado" -> "Acesso externo confirmado por teste."
+                "observado" -> "Atenção: acesso externo não verificado (IP observado por STUN)."
+                "wan" -> "Atenção: endereço do roteador; acesso externo não verificado."
+                else -> "Endereço da rede local: só funciona no mesmo Wi-Fi."
+            }
+            val text = "${panel.serverName}\nMinecraft Bedrock: $address\n$note\n" +
+                "Versão do jogo: 1.26.60 (protocolo 2225)"
+            _events.tryEmit(PanelEvent.ShareText("MoboServer — endereço", text))
         }
 
         override fun internetDetails() {
             openDialog(PanelDialog.Internet)
+        }
+
+        override fun verifyAccess() {
+            ServerController.refreshExposure(true)
+            ServerController.checkExternalAccess()
+            showMessage("Verificando o acesso externo… o resultado aparece em “Acesso pela internet”.")
         }
 
         override fun help() {
@@ -496,9 +634,21 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
             showMessage("Log copiado.")
         }
 
+        override fun exportLogs() {
+            val panel = _panel.value
+            val body = buildString {
+                appendLine("MoboServer — registros (${panel.phase})")
+                panel.logLines.forEach { line ->
+                    appendLine("${formatTime(line.time)} [${line.level}] ${line.message}")
+                }
+            }
+            _events.tryEmit(PanelEvent.ShareText("MoboServer — registros", body))
+        }
+
         override fun clearVisibleLogs() {
             ServerController.clearLogs()
-            lastLogCount = -1
+            logCache = emptyList()
+            lastLogId = -1L
             rebuild()
         }
 
@@ -515,6 +665,10 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
             ServerController.say(clean)
         }
 
+        override fun playerDetails(id: String) {
+            openDialog(PanelDialog.PlayerDetails(id))
+        }
+
         override fun editName() {
             openDialog(PanelDialog.EditName)
         }
@@ -524,7 +678,6 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         override fun setMaxPlayers(value: Int) {
-            // Atualização de um campo só: nunca reescreve a seleção do mundo.
             Store.update { it.copy(maxPlayers = value.coerceIn(1, 30)) }
         }
 
@@ -568,6 +721,13 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
     fun clearMessage() {
         if (_extras.value.message == null) return
         _extras.value = _extras.value.copy(message = null)
+    }
+
+    /** Reenvia a miniatura de um jogador quando o usuário pede no detalhe. */
+    fun retryAvatar(id: String) {
+        val name = ServerController.state.value.players.firstOrNull { it.key == id }?.name ?: return
+        ServerController.requestAvatar(name)
+        showMessage("Pedindo a skin de $name de novo…")
     }
 
     // --------------------------------------------------------- mundo (menu/ações)
@@ -633,6 +793,7 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
         Store.update(block)
     }
 
+    /** Pede ao servidor para salvar agora; o horário só aparece com o evento de confirmação. */
     fun saveWorld() {
         ServerController.saveWorld()
         showMessage("Pedido de salvamento enviado ao servidor.")
@@ -696,6 +857,9 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
             Log.w(TAG, "clipboard: ${e.message}")
         }
     }
+
+    private fun formatTime(millis: Long): String =
+        SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(millis))
 
     private fun safeFileName(name: String): String =
         name.replace(Regex("[^A-Za-z0-9 _.-]"), "").trim().ifBlank { "mundo" }.take(40)

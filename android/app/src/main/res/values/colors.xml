@@ -2,4 +2,6 @@
 <resources>
     <color name="ic_launcher_background">#0A0E09</color>
     <color name="window_background">#0A0E09</color>
+    <!-- Fundo da abertura: claro por padrão, escuro em values-night. -->
+    <color name="splash_background">#F5F6F3</color>
 </resources>

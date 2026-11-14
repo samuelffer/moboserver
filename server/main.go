@@ -514,6 +514,10 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	emitLog("info", "Desligando o servidor e salvando o mundo...")
 	if err := srv.Close(); err != nil {
 		emitLog("error", "Erro ao fechar o servidor: "+err.Error())
+	} else {
+		// Evento de salvamento concluído: é a única prova que o app usa para
+		// mostrar "Último salvamento".
+		emit(map[string]any{"t": "saved", "at": time.Now().UnixMilli()})
 	}
 	emitLog("info", "Mundo salvo. Servidor desligado.")
 	emit(map[string]any{"t": "stopped"})
@@ -549,7 +553,7 @@ func (rt *runtime) acceptLoop() {
 		emit(map[string]any{"t": "join", "name": entry.Name, "xuid": entry.XUID, "device": entry.Device})
 		// A miniatura vai em um evento separado: o evento periódico de ping não
 		// precisa carregar a imagem de novo a cada atualização.
-		rt.emitAvatar(p.UUID(), entry.Name, entry.XUID, p.Skin())
+		rt.emitAvatar(p.UUID(), entry.Name, entry.XUID, p.Skin(), false)
 		rt.emitPlayers()
 	}
 }
@@ -580,9 +584,9 @@ func (rt *runtime) refreshLatency(ctx context.Context) {
 			return int64(p.Latency() / time.Millisecond), nil
 		})
 		cancel()
-		if err != nil || ms <= 0 {
-			// -1 means "no measurement": the UI shows "Sem medição" instead of
-			// a fake 0 ms. NetherNet sessions currently report no RTT.
+		if err != nil || ms < 0 {
+			// -1 e a sentinela de "sem medicao". Zero e um RTT valido (abaixo de
+			// 1 ms) e nao pode ser descartado.
 			rt.reg.setPing(id, -1)
 			continue
 		}
@@ -590,16 +594,19 @@ func (rt *runtime) refreshLatency(ctx context.Context) {
 	}
 }
 
-// emitAvatar renders the player's head from the skin of this session and sends
-// it to the app as a small PNG. The event is only emitted when the player joins
-// or changes skin.
-func (rt *runtime) emitAvatar(id uuid.UUID, name, xuid string, s skin.Skin) {
+// emitAvatar renderiza a cabeca a partir da skin desta sessao e envia ao app.
+// O evento leva tambem o que a biblioteca entregou (dimensoes, bytes de pixel,
+// geometria, motivo e revisao), sem PNG/base64 no diagnóstico.
+func (rt *runtime) emitAvatar(id uuid.UUID, name, xuid string, s skin.Skin, force bool) {
 	res := renderAvatar(s)
+	rev := rt.reg.nextAvatarRev(id)
 	base := map[string]any{
 		"t":       "player_avatar",
 		"name":    name,
 		"xuid":    xuid,
 		"session": rt.startedAt,
+		"rev":     rev,
+		"info":    res.Info,
 	}
 	if !res.Available {
 		rt.reg.setAvatar(id, "")
@@ -609,7 +616,7 @@ func (rt *runtime) emitAvatar(id uuid.UUID, name, xuid string, s skin.Skin) {
 		emitLog("debug", fmt.Sprintf("Prévia do avatar indisponível para %s: %s", name, res.Reason))
 		return
 	}
-	if cached := rt.reg.avatarHash(id); cached == res.Hash {
+	if cached := rt.reg.avatarHash(id); cached == res.Hash && !force {
 		return
 	}
 	rt.reg.setAvatar(id, res.Hash)
@@ -618,7 +625,10 @@ func (rt *runtime) emitAvatar(id uuid.UUID, name, xuid string, s skin.Skin) {
 	base["layout"] = res.Layout
 	base["png"] = base64.StdEncoding.EncodeToString(res.PNG)
 	emit(base)
-	emitLog("debug", fmt.Sprintf("Avatar de %s gerado (%s, %d byte(s) de PNG)", name, res.Layout, len(res.PNG)))
+	emitLog("debug", fmt.Sprintf(
+		"Avatar de %s gerado (%s, geometria %q, %d byte(s) de PNG)",
+		name, res.Layout, res.Info.Geometry, len(res.PNG),
+	))
 }
 
 func (rt *runtime) emitPlayers() {

@@ -6,4 +6,15 @@
         <item name="android:navigationBarColor">@color/window_background</item>
         <item name="android:colorAccent">#8BE04A</item>
     </style>
+
+    <!--
+      SplashScreen compat: mesma arte do ícone, fundo coerente com o tema e
+      saída em fade pelo próprio sistema. Não existe Activity de carregamento:
+      a tela só espera a primeira leitura real de dados (UiReadiness.ready).
+    -->
+    <style name="Theme.MoboServer.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash</item>
+        <item name="postSplashScreenTheme">@style/Theme.MoboServer</item>
+    </style>
 </resources>

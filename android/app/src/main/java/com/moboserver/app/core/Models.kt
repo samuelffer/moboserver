@@ -15,7 +15,8 @@ data class PlayerInfo(
     /**
      * Round-trip medido pelo transporte, em milissegundos. -1 significa que o
      * transporte não expõe medição: a interface mostra "Sem medição" em vez de
-     * inventar um número.
+     * inventar um número. Zero é medição válida (abaixo de 1 ms) e não pode ser
+     * confundido com ausência.
      */
     val pingMs: Long = -1,
     /** Transporte que forneceu a medição ("" quando o servidor não sabe). */
@@ -25,18 +26,81 @@ data class PlayerInfo(
     val key: String get() = if (xuid.isNotBlank()) xuid else name.lowercase()
 }
 
+/** Estado explícito da miniatura de um jogador (nunca um traço sem explicação). */
+enum class AvatarState {
+    /** Evento de avatar ainda não chegou para este jogador. */
+    LOADING,
+
+    /** PNG decodificado e publicado. */
+    READY,
+
+    /** Formato que esta versão não sabe recortar (Persona, geometria própria). */
+    UNSUPPORTED,
+
+    /** O formato deveria funcionar, mas o evento/PNG/hash falhou. */
+    FAILED,
+}
+
+/**
+ * O que o servidor informou sobre a skin, sem PNG/base64: dimensões, tamanho dos
+ * pixels, geometria resolvida e resultado da renderização.
+ */
+data class AvatarInfo(
+    val persona: Boolean = false,
+    val textureWidth: Int = 0,
+    val textureHeight: Int = 0,
+    val pixelBytes: Int = 0,
+    val modelBytes: Int = 0,
+    val geometry: String = "",
+    val headCube: Boolean = false,
+    val rendered: Boolean = false,
+) {
+    fun summary(): String = listOfNotNull(
+        if (textureWidth > 0) "${textureWidth}x$textureHeight" else null,
+        if (pixelBytes > 0) "$pixelBytes B de pixel" else null,
+        if (modelBytes > 0) "modelo $modelBytes B" else null,
+        geometry.takeIf { it.isNotBlank() },
+        "Persona".takeIf { persona },
+        "cubo de cabeça".takeIf { headCube },
+    ).joinToString(" • ")
+}
+
 /**
  * Miniatura da cabeça do jogador, montada pelo servidor a partir da skin da
- * sessão. [image] fica nula quando a skin não pôde ser lida (Persona,
- * geometria personalizada, textura inconsistente); [reason] explica o motivo.
+ * sessão. [image] fica nula quando a skin não pôde ser lida; [state] e [reason]
+ * explicam exatamente o que aconteceu.
  */
 data class PlayerAvatar(
-    val hash: String,
-    val image: ImageBitmap?,
+    val hash: String = "",
+    val image: ImageBitmap? = null,
     val layout: String = "",
     val reason: String = "",
+    val state: AvatarState = AvatarState.LOADING,
+    val info: AvatarInfo = AvatarInfo(),
+    /** Revisão do servidor: imagem antiga não substitui uma skin mais nova. */
+    val rev: Long = 0,
 ) {
     val available: Boolean get() = image != null
+}
+
+/** Uma mensagem de chat do jogo (recebida ou enviada pelo painel). */
+data class ChatMessage(
+    val id: Long,
+    val at: Long,
+    val from: String,
+    val text: String,
+    /** true quando a mensagem partiu do painel do app. */
+    val fromPanel: Boolean = false,
+    /** PENDING, SENT ou FAILED. */
+    val status: String = ChatStatus.SENT,
+) {
+    val isPlayer: Boolean get() = !fromPanel && from.isNotBlank()
+}
+
+object ChatStatus {
+    const val PENDING = "pending"
+    const val SENT = "sent"
+    const val FAILED = "failed"
 }
 
 /** Uma amostra da latência dos jogadores, para a aba Conexão. */
@@ -129,6 +193,10 @@ data class RuntimeState(
     val avatars: Map<String, PlayerAvatar> = emptyMap(),
     /** Latência agregada dos últimos 60 s, uma amostra a cada atualização. */
     val pingHistory: List<PingSample> = emptyList(),
+    /** Chat estruturado, do mais antigo para o mais novo (limite na UI). */
+    val chat: List<ChatMessage> = emptyList(),
+    /** Último salvamento concluído confirmado pelo servidor (0 = desconhecido). */
+    val lastSaveAt: Long = 0L,
 )
 
 /** Endereço sem a porta, aceitando "[::1]:19132" e "192.168.0.10:54535". */

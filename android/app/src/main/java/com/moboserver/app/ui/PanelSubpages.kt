@@ -446,10 +446,21 @@ fun InternetDialog(dark: Boolean, info: InternetInfo, onRefresh: () -> Unit, onC
                 )
             }
         }
+        if (info.cgnat) {
+            MoboNote(
+                dark,
+                "A rede local está em 100.64.0.0/10 (CGNAT da operadora). Esse endereço não é " +
+                    "alcançável por amigos: uma regra UPnP no roteador não atravessa o NAT da operadora.",
+            )
+        }
         MoboNote(
             dark,
-            "“Não verificado” não significa bloqueado: o teste só é concluído quando outra rede " +
-                "realmente alcança o servidor.",
+            if (info.lastCheckAt.isBlank()) {
+                "“Não verificado” não significa bloqueado: o teste só é concluído quando outra " +
+                    "rede realmente alcança o servidor."
+            } else {
+                "Último teste registrado em ${info.lastCheckAt}. Trocar de rede invalida o resultado."
+            },
         )
         Spacer(Modifier.height(8.dp))
         MoboPrimary(dark, if (info.checking) "Verificando…" else "Testar acesso externo", enabled = !info.checking, onClick = onCheck)
@@ -524,6 +535,45 @@ fun WorldMenuDialog(
         )
         TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
             Text("Fechar", color = moboPalette(dark).muted)
+        }
+    }
+}
+
+@Composable
+fun PlayerDetailsDialog(
+    dark: Boolean,
+    name: String,
+    latencyMs: Long?,
+    state: String,
+    reason: String,
+    infoSummary: String,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val p = moboPalette(dark)
+    MoboDialogFrame(dark, onDismiss) {
+        DialogTitle(dark, name, "Skin e latência desta sessão.")
+        MoboGroup(dark) {
+            MoboRow(dark, "Latência", latencyMs?.let { "$it ms" } ?: "sem medição")
+            MoboDivider(dark)
+            MoboRow(dark, "Imagem da skin", state)
+            if (infoSummary.isNotBlank()) {
+                MoboDivider(dark)
+                Text(infoSummary, color = p.muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 10.dp))
+            }
+        }
+        if (reason.isNotBlank()) {
+            MoboNote(dark, reason)
+        }
+        MoboNote(
+            dark,
+            "A imagem é montada pelo próprio servidor a partir da skin que chegou na sessão. " +
+                "Nenhuma skin é inventada nem buscada por fora.",
+        )
+        Spacer(Modifier.height(8.dp))
+        MoboPrimary(dark, "Pedir a skin de novo", onClick = onRetry)
+        TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+            Text("Fechar", color = p.muted)
         }
     }
 }

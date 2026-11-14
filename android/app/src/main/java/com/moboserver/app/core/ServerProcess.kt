@@ -55,7 +55,18 @@ sealed class ServerEvent {
         val layout: String,
         val reason: String,
         val png: String,
+        /** Revisão do servidor para este jogador; cresce a cada skin enviada. */
+        val rev: Long = 0,
+        /** Diagnóstico da skin (sem PNG): dimensões, geometria, persona. */
+        val info: AvatarInfo = AvatarInfo(),
     ) : ServerEvent()
+    /** Mensagem escrita por um jogador no chat do jogo. */
+    data class Chat(val from: String, val msg: String, val session: Long) : ServerEvent()
+    /** Confirmação do chat quando a mensagem partiu do painel do app. */
+    data class ChatSent(val id: String, val ok: Boolean) : ServerEvent()
+    /** Salvamento concluído e confirmado pelo servidor. */
+    data class Saved(val at: Long) : ServerEvent()
+    data object SaveFailed : ServerEvent()
     data class Fatal(val message: String) : ServerEvent()
     data object Stopped : ServerEvent()
     data class Exited(val code: Int) : ServerEvent()
@@ -232,12 +243,43 @@ class ServerProcess(
                     layout = obj.optString("layout"),
                     reason = obj.optString("reason"),
                     png = obj.optString("png"),
+                    rev = obj.optLong("rev"),
+                    info = readAvatarInfo(obj.optJSONObject("info")),
                 ),
             )
+            "chat" -> listener(
+                ServerEvent.Chat(
+                    from = obj.optString("from"),
+                    msg = obj.optString("msg"),
+                    session = obj.optLong("session"),
+                ),
+            )
+            "chat_sent" -> listener(
+                ServerEvent.ChatSent(
+                    id = obj.optString("id"),
+                    ok = obj.optBoolean("ok", false),
+                ),
+            )
+            "saved" -> listener(ServerEvent.Saved(obj.optLong("at")))
+            "save_failed" -> listener(ServerEvent.SaveFailed)
             "fatal" -> listener(ServerEvent.Fatal(obj.optString("msg")))
             "stopped" -> listener(ServerEvent.Stopped)
             else -> listener(ServerEvent.Log("debug", line))
         }
+    }
+
+    private fun readAvatarInfo(obj: JSONObject?): AvatarInfo {
+        if (obj == null) return AvatarInfo()
+        return AvatarInfo(
+            persona = obj.optBoolean("persona"),
+            textureWidth = obj.optInt("tex_w"),
+            textureHeight = obj.optInt("tex_h"),
+            pixelBytes = obj.optInt("pix_bytes"),
+            modelBytes = obj.optInt("model_bytes"),
+            geometry = obj.optString("geometry"),
+            headCube = obj.optBoolean("head_cube"),
+            rendered = obj.optBoolean("rendered"),
+        )
     }
 
     private fun readPlayers(obj: JSONObject): List<PlayerInfo> {
