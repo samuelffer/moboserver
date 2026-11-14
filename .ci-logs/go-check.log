@@ -1,3 +1,9 @@
-# github.com/samuelffer/moboserver/server
-# [github.com/samuelffer/moboserver/server]
-vet: ./nethernet.go:87:13: settingEngine.SetNAT1To1IPs([]string{…}, webrtc.ICECandidateTypeHost) (no value) used as value
+--- FAIL: TestRelayMuxAtribuiPortasUnicas (25.00s)
+    relaymux_test.go:32: sem portas do relay
+--- FAIL: TestRelayMuxEntregaDatagramas (25.00s)
+    relaymux_test.go:100: sem portas do relay
+FAIL
+FAIL	github.com/samuelffer/moboserver/server	50.164s
+?   	github.com/samuelffer/moboserver/server/cmd/relay	[no test files]
+ok  	github.com/samuelffer/moboserver/server/internal/tunnel	1.238s
+FAIL
