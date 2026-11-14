@@ -198,16 +198,23 @@ func (r *UDPRelay) serve(ctx context.Context, control net.Conn) {
 	}
 	rest := strings.TrimSpace(strings.TrimPrefix(line, HandshakeUDP))
 	parts := strings.Fields(rest)
-	if len(parts) != 2 {
+	// O token é opcional (relay sem autenticação, usado em testes locais).
+	var token, countText string
+	switch len(parts) {
+	case 1:
+		token, countText = "", parts[0]
+	case 2:
+		token, countText = parts[0], parts[1]
+	default:
 		_, _ = io.WriteString(control, "ERR formato\n")
 		return
 	}
-	if !r.accepts(parts[0]) {
+	if !r.accepts(token) {
 		_, _ = io.WriteString(control, "ERR token\n")
 		r.logf("relay UDP: sessão rejeitada de %s", control.RemoteAddr())
 		return
 	}
-	count, err := strconv.Atoi(parts[1])
+	count, err := strconv.Atoi(countText)
 	if err != nil {
 		_, _ = io.WriteString(control, "ERR formato\n")
 		return
@@ -369,7 +376,13 @@ func (c *UDPClient) session(ctx context.Context) error {
 	if ports <= 0 {
 		ports = 1
 	}
-	if _, err := fmt.Fprintf(conn, "%s%s %d\n", HandshakeUDP, c.Token, ports); err != nil {
+	// Sem token a linha leva só a quantidade de portas (relay local de teste).
+	handshake := HandshakeUDP
+	if c.Token != "" {
+		handshake += c.Token + " "
+	}
+	handshake += strconv.Itoa(ports) + "\n"
+	if _, err := conn.Write([]byte(handshake)); err != nil {
 		return err
 	}
 	_ = conn.SetDeadline(time.Now().Add(20 * time.Second))
