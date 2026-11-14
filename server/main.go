@@ -25,6 +25,8 @@ import (
 	"github.com/df-mc/dragonfly/server/world/biome"
 	"github.com/df-mc/dragonfly/server/world/generator"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
+
+	"github.com/samuelffer/moboserver/server/internal/tunnel"
 )
 
 // appVersion is the version of the embedded server, kept in sync with the
@@ -57,6 +59,11 @@ type options struct {
 	// NetherNetPublicIP anuncia candidatos ICE com o IP publico do operador.
 	// So faz sentido com mapeamento 1:1 das mesmas portas na VPS.
 	NetherNetPublicIP string
+	// RelayUDPPorts liga o mux UDP do ICE sobre o tunel (MOBOTUN/2) e diz
+	// quantas portas publicas pedir. 0 mantem so a LAN.
+	RelayUDPPorts int
+	// RelayPublicIP e o IPv4 publico do relay, anunciado nos candidatos ICE.
+	RelayPublicIP string
 	// RakNet liga o transporte antigo (UDP 19132 + descoberta na rede local).
 	// Fica desligado por padrao: o caminho validado com o Bedrock 26.63 e o
 	// NetherNet. A descoberta automatica na aba LAN depende dele.
@@ -108,6 +115,10 @@ func parseFlags() options {
 		"UDP ports used by NetherNet player connections")
 	flag.StringVar(&o.NetherNetPublicIP, "nethernet-public-ip", "",
 		"public IPv4 announced in ICE candidates (requires 1:1 port mapping with the same numbers)")
+	flag.IntVar(&o.RelayUDPPorts, "relay-udp-ports", 0,
+		"public UDP ports requested from the relay for ICE (0 disables the relay mux)")
+	flag.StringVar(&o.RelayPublicIP, "relay-public-ip", "",
+		"public IPv4 of the relay, announced in ICE candidates when -relay-udp-ports is set")
 	flag.StringVar(&o.IfaceFile, "ifaces", "",
 		"JSON file with the interface list written by the Android app "+
 			"(netlink is blocked for apps on Android, so ICE cannot enumerate interfaces itself)")
@@ -330,6 +341,46 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 			return fmt.Errorf("faixa de portas do NetherNet invalida: %w", perr)
 		}
 	}
+	// Mux UDP do ICE: quando o operador configurou o relay, o celular roda o ICE
+	// sobre o tunel e anuncia IP+porta publicos. Sem relay, nada muda.
+	var iceRelayMux ice.UDPMux
+	if opts.RelayUDPPorts > 0 {
+		if opts.Tunnel == "" || opts.RelayPublicIP == "" {
+			return fmt.Errorf("relay-udp-ports exige -tunnel e -relay-public-ip")
+		}
+		publicIP := net.ParseIP(opts.RelayPublicIP)
+		if publicIP == nil {
+			return fmt.Errorf("relay-public-ip invalido: %q", opts.RelayPublicIP)
+		}
+		udpClient := &tunnel.UDPClient{
+			RelayAddr: opts.Tunnel,
+			Token:     opts.TunnelToken,
+			Ports:     opts.RelayUDPPorts,
+			Log:       func(msg string) { emitLog("info", "relay UDP: "+msg) },
+			OnDrop: func(reason string) {
+				emitLog("warn", "relay UDP caiu ("+reason+"), reconectando")
+			},
+		}
+		ready := make(chan []int, 1)
+		udpClient.OnReady = func(ports []int) {
+			select {
+			case ready <- ports:
+			default:
+			}
+		}
+		go udpClient.Run(ctx)
+		select {
+		case ports := <-ready:
+			iceRelayMux = newRelayUDPMux(udpClient, publicIP)
+			emitLog("info", fmt.Sprintf("relay UDP pronto: %s com %d portas", opts.RelayPublicIP, len(ports)))
+		case <-time.After(20 * time.Second):
+			// Sem relay o servidor continua: a LAN não depende dele.
+			emitLog("warn", "relay UDP não respondeu em 20 s; seguindo sem acesso externo")
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
 	conf.Listeners = nil
 	if opts.RakNet {
 		conf.Listeners = append(conf.Listeners, func(c server.Config) (server.Listener, error) {
@@ -345,6 +396,7 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 				UDPPortsMin:    udpMin,
 				UDPPortsMax:    udpMax,
 				PublicIP:       opts.NetherNetPublicIP,
+				UDPMux:         iceRelayMux,
 				AllowAnonymous: c.AuthDisabled,
 				Network:        iceNet,
 				Log:            log,

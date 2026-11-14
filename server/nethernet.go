@@ -57,6 +57,9 @@ type netherNetOptions struct {
 	// Sem mapeamento 1:1 nao use: o candidato publicado precisa chegar ao
 	// celular na mesma porta.
 	PublicIP       string
+	// UDPMux, quando definido, faz o ICE usar o mux do relay (portas publicas)
+	// em vez de soquetes locais.
+	UDPMux ice.UDPMux
 	AllowAnonymous bool
 	Network        transport.Net
 	Log            *slog.Logger
@@ -89,7 +92,12 @@ func startNetherNet(conf server.Config, opts netherNetOptions) (server.Listener,
 		log.Info("ICE vai anunciar um IP publico.", "ip", opts.PublicIP)
 	}
 	var mux ice.UDPMux
-	if opts.UDPPortsMin != 0 && opts.UDPPortsMin == opts.UDPPortsMax {
+	if opts.UDPMux != nil {
+		// Portas publicas do relay: o ICE anuncia IP+porta alcancaveis de fora.
+		mux = opts.UDPMux
+		settingEngine.SetICEUDPMux(mux)
+		log.Info("ICE usando o mux do relay.")
+	} else if opts.UDPPortsMin != 0 && opts.UDPPortsMin == opts.UDPPortsMax {
 		mux, err = ice.NewMultiUDPMuxFromPort(int(opts.UDPPortsMin))
 		if err != nil {
 			return nil, fmt.Errorf("allocate UDP mux: %w", err)
