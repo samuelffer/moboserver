@@ -111,3 +111,37 @@ por testes locais de ida e volta.
 * O acesso externo **não** está operacional.
 * A LAN continua como estava; nada nesta revisão altera `ICENet` nem a autenticação.
 * Não há capturas, vídeos ou números de latência de conexão externa: nada disso foi medido.
+
+## 7. Estado depois da revisão de 2026-11-14 (revisão `9b3143c`)
+
+Feito nesta rodada:
+
+* `ServerController.tunnelArgs()` passou a enviar `-relay-udp-ports` e
+  `-relay-public-ip` quando ambos existem; os valores são persistidos em
+  `ServerConfig` (`relayPublicIp`, `relayUdpPorts`) e validados no codec
+  (0–32 portas).
+* `UDPRelay.openPorts` percorre a faixa inteira em vez de começar sempre em
+  `PortRange[0]`: uma segunda instalação recebe as próximas portas livres em vez
+  de falhar, e porta ocupada não derruba a sessão.
+
+Ainda **em falta** (não está pronto, não é "só alugar uma VPS"):
+
+1. **Sinalização pública (3.1)**: não há proxy TCP para `/v1/join` e
+   `/v1/join/{networkId}`. Sem isso o jogador não consegue nem negociar a sessão
+   pelo endereço público. O MOBOTUN/2 hoje só transporta datagramas.
+2. **Mux (3.3)**: `GetConn` aceita porta explícita sem checar se ela pertence a
+   outra ufrag; o cache é só por ufrag; `GetListenAddresses` anuncia todas as
+   portas; os testes usam `addr=nil`, portanto não cobrem a coleta real de
+   candidatos.
+3. **Ciclo de vida (3.4)**: `Close`/deadlines não interrompem `ReadFrom`/`WriteTo`
+   bloqueados; `writeDeadline` é guardado e não aplicado; reconexão não invalida
+   conexões, filas e candidatos da sessão anterior.
+4. **LAN com relay ativo (3.6)**: quando `opts.UDPMux` é definido, o listener usa
+   só o mux do relay. Não há segundo listener nem teste que prove a LAN
+   simultânea — e sem essa prova não se pode afirmar que a LAN continua igual.
+5. **Segurança (3.7)**: MOBOTUN/2 sem TLS (o modo 1 tem `-tunnel-tls`);
+   provisionamento, identidade por instalação, revogação, TTL e limites por
+   instalação não existem ainda.
+6. **Interface (4)**: o endereço compartilhável continua vindo de LAN/WAN/STUN +
+   porta local (`addressInfo()`), não do endpoint público de sinalização — porque
+   esse endpoint ainda não é atribuído a nada.
