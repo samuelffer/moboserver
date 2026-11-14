@@ -21,3 +21,6 @@ server/mobosrv.exe
 
 # logs de CI baixados localmente
 .ci-logs/
+
+# Agent/local toolchain caches (never commit)
+.cache/

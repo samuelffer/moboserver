@@ -6,6 +6,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.util.Collections
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipFile
 
@@ -86,6 +87,7 @@ class WorldRepository(context: Context) {
     private val app = context.applicationContext
     private val root = File(app.filesDir, "worlds")
     private val indexFile = File(root, "index.json")
+    private val metadataDir = File(app.filesDir, "world-metadata")
 
     init {
         root.mkdirs()
@@ -95,6 +97,37 @@ class WorldRepository(context: Context) {
 
     /** Cópia do .mcworld recebido, guardada junto do mundo. */
     fun originalFile(id: String): File = File(directory(id), ORIGINAL_NAME)
+
+    /** Metadados privados de origem; não ficam dentro do mundo exportado. */
+    fun originFile(id: String): File = File(metadataDir, "origin-$id.json")
+
+    fun generationFile(id: String): File {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(id.toByteArray(Charsets.UTF_8))
+        val name = digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        return File(File(File(app.filesDir, "generation"), "worlds"), "$name.json")
+    }
+
+    private fun writeImportOrigin(id: String) {
+        if (!metadataDir.exists()) metadataDir.mkdirs()
+        val file = originFile(id)
+        val tmp = File(metadataDir, ".origin-${UUID.randomUUID()}.tmp")
+        try {
+            val json = JSONObject()
+                .put("schema", 1)
+                .put("world_id", id)
+                .put("origin", "imported")
+                .put("source", "mcworld-import")
+                .put("imported_at", System.currentTimeMillis())
+            tmp.outputStream().use {
+                it.write(json.toString().toByteArray(Charsets.UTF_8))
+                it.fd.sync()
+            }
+            if (!tmp.renameTo(file)) throw IOException("Não foi possível publicar os metadados de origem")
+        } finally {
+            tmp.delete()
+        }
+    }
 
     /**
      * Fatos do mundo no disco, sem validação cara: serve para separar "a pasta
@@ -341,6 +374,7 @@ class WorldRepository(context: Context) {
 
             val display = validation.levelName.ifBlank { levelName.orEmpty() }
                 .ifBlank { fallbackName.ifBlank { "Mundo importado" } }
+            writeImportOrigin(id)
             writeIndex(readIndex().apply { put(id, display) })
             return WorldInfo(
                 id = id,
@@ -360,6 +394,7 @@ class WorldRepository(context: Context) {
 
     fun delete(id: String) {
         directory(id).deleteRecursively()
+        originFile(id).delete()
         writeIndex(readIndex().apply { remove(id) })
     }
 

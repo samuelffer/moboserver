@@ -112,7 +112,7 @@ func runSelftest(opts options, log *slog.Logger) int {
 			<-done
 			return 1
 		}
-	
+
 		// The loopback ping above only proves the socket exists. This one proves the
 		// server answers on a real interface address, which is exactly what breaks
 		// when the listen address or the socket binding is wrong.

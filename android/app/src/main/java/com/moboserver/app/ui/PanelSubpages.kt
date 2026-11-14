@@ -352,11 +352,13 @@ fun GameDialog(
     dark: Boolean,
     gameMode: String,
     difficulty: String,
-    onSave: (String, String) -> Unit,
+    generator: String,
+    onSave: (String, String, String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var mode by remember { mutableStateOf(gameMode) }
     var diff by remember { mutableStateOf(difficulty) }
+    var gen by remember { mutableStateOf(if (generator == "flat") "flat" else "terrain") }
     MoboDialogFrame(dark, onDismiss) {
         DialogTitle(dark, "Jogo", "Vale quando um mundo novo é aberto pelo servidor.")
         MoboLabel(dark, "MODO DE JOGO")
@@ -373,7 +375,15 @@ fun GameDialog(
                 ChoiceRow(dark, item.second, diff == item.first) { diff = item.first }
             }
         }
-        DialogButtons(dark, onCancel = onDismiss, onConfirm = { onSave(mode, diff) }, confirm = "Salvar")
+        MoboLabel(dark, "GERADOR PEDIDO PARA MUNDO NOVO")
+        MoboGroup(dark) {
+            listOf("terrain" to "Terrain (simplificado)", "flat" to "Flat (superplano)").forEachIndexed { index, item ->
+                if (index > 0) MoboDivider(dark)
+                ChoiceRow(dark, item.second, gen == item.first) { gen = item.first }
+            }
+        }
+        MoboNote(dark, "Mundo existente mantém a política registrada. Pedir outro gerador não regenera nem apaga chunks; o servidor avisa a divergência.")
+        DialogButtons(dark, onCancel = onDismiss, onConfirm = { onSave(mode, diff, gen) }, confirm = "Salvar")
     }
 }
 
@@ -420,11 +430,11 @@ fun InternetDialog(dark: Boolean, info: InternetInfo, onRefresh: () -> Unit, onC
     MoboDialogFrame(dark, onDismiss) {
         DialogTitle(dark, "Acesso pela internet", "O que é medido, e o que ainda não foi.")
         MoboGroup(dark) {
-            MoboRow(dark, "Endereço na rede local", info.lanAddress)
+            MoboRow(dark, info.lanLabel, info.lanAddress)
             MoboDivider(dark)
-            MoboRow(dark, "Endereço do roteador (UPnP)", info.wanAddress)
+            MoboRow(dark, info.wanLabel, info.wanAddress)
             MoboDivider(dark)
-            MoboRow(dark, "Endereço visto de fora", info.publicAddress)
+            MoboRow(dark, info.publicLabel, info.publicAddress)
             if (info.tunnelAddress.isNotBlank()) {
                 MoboDivider(dark)
                 MoboRow(dark, "Túnel (relay)", info.tunnelAddress)
@@ -513,6 +523,7 @@ fun WorldMenuDialog(
     running: Boolean,
     onExport: () -> Unit,
     onValidate: () -> Unit,
+    onRecoverPolicy: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -522,6 +533,8 @@ fun WorldMenuDialog(
             MoboRow(dark, "Validar mundo", onClick = onValidate)
             MoboDivider(dark)
             MoboRow(dark, "Exportar (.mcworld)", onClick = onExport)
+            MoboDivider(dark)
+            MoboRow(dark, "Recuperar política de geração", enabled = !running, onClick = if (running) null else onRecoverPolicy)
             MoboDivider(dark)
             MoboRow(dark, "Excluir mundo", enabled = !running, onClick = if (running) null else onDelete)
         }
@@ -548,6 +561,7 @@ fun PlayerDetailsDialog(
     reason: String,
     infoSummary: String,
     onRetry: () -> Unit,
+    onExport: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val p = moboPalette(dark)
@@ -572,8 +586,40 @@ fun PlayerDetailsDialog(
         )
         Spacer(Modifier.height(8.dp))
         MoboPrimary(dark, "Pedir a skin de novo", onClick = onRetry)
+        Spacer(Modifier.height(8.dp))
+        TextButton(onClick = onExport, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+            Text("Exportar skin/modelo (.zip)", color = p.green)
+        }
         TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
             Text("Fechar", color = p.muted)
+        }
+    }
+}
+
+@Composable
+fun RecoverPolicyDialog(
+    dark: Boolean,
+    name: String,
+    onReset: () -> Unit,
+    onAdoptLegacy: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val p = moboPalette(dark)
+    MoboDialogFrame(dark, onDismiss) {
+        DialogTitle(dark, "Recuperar política", name)
+        MoboNote(
+            dark,
+            "Isto não apaga nem regenera chunks. A política só é gravada depois que o mundo inicia validado. " +
+                "Use redefinir apenas quando o registro estiver corrompido; o arquivo inválido é preservado como cópia.",
+        )
+        Spacer(Modifier.height(8.dp))
+        MoboPrimary(dark, "Preservar corrompido e redefinir", onClick = onReset)
+        Spacer(Modifier.height(8.dp))
+        TextButton(onClick = onAdoptLegacy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+            Text("Adotar generation.json antigo neste mundo", color = p.green)
+        }
+        TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+            Text("Cancelar", color = p.muted)
         }
     }
 }

@@ -33,7 +33,7 @@ type terrain struct {
 	once sync.Once
 
 	stone, dirt, grass, bedrock, sand, water, gravel, coal, iron, log, leaves uint32
-	plains                                                                  uint32
+	plains                                                                    uint32
 }
 
 func newTerrain() *terrain { return &terrain{} }
@@ -213,7 +213,7 @@ func defaultSpawn(gen string, dim world.Dimension) cube.Pos {
 // hash2 and hash3 are deterministic integer hashes used for value noise and
 // for scatter decisions (ores, trees).
 func hash2(x, z int64, seed uint64) float64 {
-	return hashU64(uint64(x)*0x9E3779B97F4A7C15^uint64(z)*0xC2B2AE3D27D4EB4F^seed) 
+	return hashU64(uint64(x)*0x9E3779B97F4A7C15 ^ uint64(z)*0xC2B2AE3D27D4EB4F ^ seed)
 }
 
 func hash3(x, y, z int64, seed uint64) float64 {

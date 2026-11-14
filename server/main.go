@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -30,33 +32,38 @@ import (
 	"github.com/samuelffer/moboserver/server/internal/tunnel"
 )
 
-// appVersion is the version of the embedded server, kept in sync with the
-// Android app version by the build workflow.
-const appVersion = "1.3.0"
+// Identificação injetada por scripts/build-server.py a partir de version.properties.
+// "dev"/"unknown" tornam explícito um build fora do fluxo controlado.
+var appVersion = "dev"
+var buildRevision = "unknown"
+var buildSourceHash = "unknown"
 
 // options holds every command line flag the Android app passes to the server
 // process. Everything is explicit: the process never reads a config file, so
 // the app is always the single source of truth.
 type options struct {
-	World        string
-	PlayersDir   string
-	DataDir      string
-	BansFile     string
-	Name         string
-	Port         int
-	MaxPlayers   int
-	Auth         bool
-	GameMode     string
-	Difficulty   string
-	ViewDistance int
-	Gen          string
-	DNS          string
-	Tunnel       string
-	TunnelToken  string
-	TunnelTLS    bool
-	AllowOpen      bool
-	NetherNet      bool
-	NetherNetPorts string
+	World              string
+	WorldID            string
+	WorldOriginFile    string
+	GenerationRecovery string
+	PlayersDir         string
+	DataDir            string
+	BansFile           string
+	Name               string
+	Port               int
+	MaxPlayers         int
+	Auth               bool
+	GameMode           string
+	Difficulty         string
+	ViewDistance       int
+	Gen                string
+	DNS                string
+	Tunnel             string
+	TunnelToken        string
+	TunnelTLS          bool
+	AllowOpen          bool
+	NetherNet          bool
+	NetherNetPorts     string
 	// NetherNetPublicIP anuncia candidatos ICE com o IP publico do operador.
 	// So faz sentido com mapeamento 1:1 das mesmas portas na VPS.
 	NetherNetPublicIP string
@@ -68,16 +75,16 @@ type options struct {
 	// RakNet liga o transporte antigo (UDP 19132 + descoberta na rede local).
 	// Fica desligado por padrao: o caminho validado com o Bedrock 26.63 e o
 	// NetherNet. A descoberta automatica na aba LAN depende dele.
-	RakNet     bool
-	LogLevel   string
+	RakNet        bool
+	LogLevel      string
 	ValidateWorld string
 	// RequireWorld recusa iniciar sem um mundo importado e válido. É o padrão
 	// do app: a criação de mundo acontece no Minecraft, não aqui.
-	RequireWorld bool
-	IfaceFile  string
-	Selftest     bool
+	RequireWorld   bool
+	IfaceFile      string
+	Selftest       bool
 	SelftestTunnel bool
-	ShowVersion  bool
+	ShowVersion    bool
 
 	// readyHook and ignoreStdin are only used by the self test, they are not
 	// command line flags.
@@ -88,6 +95,9 @@ type options struct {
 func parseFlags() options {
 	var o options
 	flag.StringVar(&o.World, "world", "world", "folder that holds the world (Bedrock LevelDB format)")
+	flag.StringVar(&o.WorldID, "world-id", "", "persistent app world ID (required for per-world generation policy; CLI falls back to a path-derived ID)")
+	flag.StringVar(&o.WorldOriginFile, "world-origin-file", "", "app-private JSON metadata written after a successful .mcworld import")
+	flag.StringVar(&o.GenerationRecovery, "generation-recovery", "", "explicit one-shot recovery: adopt-legacy or reset (preserves corrupt record)")
 	flag.StringVar(&o.PlayersDir, "players", "players", "folder that holds player data")
 	flag.StringVar(&o.DataDir, "data", ".", "base data folder")
 	flag.StringVar(&o.BansFile, "bans", "", "path of the ban list file")
@@ -97,7 +107,7 @@ func parseFlags() options {
 	flag.BoolVar(&o.Auth, "auth", true, "require Xbox Live authentication")
 	flag.StringVar(&o.GameMode, "gamemode", "survival", "default game mode: survival, creative, adventure or spectator")
 	flag.StringVar(&o.Difficulty, "difficulty", "normal", "difficulty: peaceful, easy, normal or hard")
-	flag.IntVar(&o.ViewDistance, "view", 8, "maximum chunk radius (view distance) for players")
+	flag.IntVar(&o.ViewDistance, "view", viewDistanceDefault, "maximum chunk radius (view distance) for players")
 	flag.StringVar(&o.Gen, "gen", "terrain", "world generator for new chunks: terrain or flat")
 	flag.StringVar(&o.DNS, "dns", "", "DNS servers for this network, comma separated (Android has no resolv.conf)")
 	flag.BoolVar(&o.AllowOpen, "allow-open", false,
@@ -136,7 +146,7 @@ func parseFlags() options {
 func main() {
 	opts := parseFlags()
 	if opts.ShowVersion {
-		fmt.Printf("mobosrv %s dragonfly %s bedrock %s protocol %d\n", appVersion, dragonflyVersion(), protocol.CurrentVersion, protocol.CurrentProtocol)
+		fmt.Printf("mobosrv %s revision %s source %s dragonfly %s bedrock %s protocol %d\n", appVersion, buildRevision, buildSourceHash, dragonflyVersion(), protocol.CurrentVersion, protocol.CurrentProtocol)
 		return
 	}
 
@@ -192,7 +202,15 @@ func main() {
 
 	if err := runServer(ctx, opts, logger, cancel); err != nil {
 		emitLog("error", err.Error())
-		emit(map[string]any{"t": "fatal", "msg": friendlyError(err)})
+		event := map[string]any{"t": "fatal", "msg": friendlyError(err)}
+		var we *worldError
+		var ge *generationError
+		if errors.As(err, &we) {
+			event["code"] = we.Code
+		} else if errors.As(err, &ge) {
+			event["code"] = ge.Code
+		}
+		emit(event)
 		os.Exit(1)
 	}
 }
@@ -207,47 +225,45 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	setupResolver(strings.Split(opts.DNS, ","))
 	setupTrustStore()
 
-	for _, dir := range []string{opts.DataDir, opts.PlayersDir, opts.World} {
+	// O ID persistente vem do app. No CLI/self-test, um identificador derivado
+	// do caminho mantém mundos separados; nunca herdamos o JSON global.
+	if opts.WorldID == "" {
+		abs, err := filepath.Abs(opts.World)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256([]byte(abs))
+		opts.WorldID = "path-" + hex.EncodeToString(sum[:16])
+	}
+	existed := worldExists(opts.World)
+	if opts.RequireWorld && !existed {
+		return worldErr(worldCodeIncomplete, "nenhum mundo importado nesta pasta: importe um mundo Bedrock antes de iniciar")
+	}
+	resolution, err := policyForStart(opts, existed)
+	if err != nil {
+		return err
+	}
+	effective := resolution.Effective
+	if resolution.Diverged {
+		emitLog("warn", fmt.Sprintf(
+			"Este mundo usa efetivamente \"%s\" (%s, registrado na versão %s); a configuração pediu \"%s\". Mantendo o gerador anterior. Chunks existentes não são regenerados nem apagados.",
+			effective.Overworld, effective.Engine, effective.EngineVersion, resolution.Requested.Overworld))
+	}
+	if existed {
+		emitLog("info", "Mundo encontrado: abrindo dados existentes. Origem: "+originLabel(effective.Origin)+".")
+	} else {
+		emitLog("info", "Nenhum mundo encontrado: um novo mundo será gerado com "+effective.Overworld+" (motor simplificado, não vanilla).")
+	}
+
+	for _, dir := range []string{opts.DataDir, opts.PlayersDir} {
 		if dir == "" {
 			continue
 		}
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("não foi possível criar a pasta %s: %w", dir, err)
 		}
 	}
-
-	imported := worldExists(opts.World)
-	// Registro de geração: um mundo não muda de motor em silêncio.
-	policy := generationPolicy{Engine: generationEngine, Overworld: "terrain", Imported: imported, EngineVersion: appVersion}
-	if opts.Gen == "flat" {
-		policy.Overworld = "flat"
-	}
-	effective, diverged, perr := recordGenerationPolicy(generationPath(opts.DataDir), policy)
-	if perr != nil {
-		emitLog("warn", "Não foi possível registrar a política de geração: "+perr.Error())
-	} else if diverged {
-		emitLog("warn", fmt.Sprintf(
-			"Esta pasta foi gerada com \"%s\" (%s); a configuração atual pede \"%s\". Mantendo o registro anterior e sem regenerar chunks.",
-			effective.Overworld, effective.EngineVersion, policy.Overworld))
-	}
-	if imported {
-		emitLog("info", "Mundo encontrado: abrindo dados existentes...")
-	} else if opts.RequireWorld {
-		return worldErr(worldCodeIncomplete,
-			"nenhum mundo importado nesta pasta: importe um mundo Bedrock antes de iniciar")
-	} else {
-		emitLog("info", "Nenhum mundo encontrado: um novo mundo sera gerado.")
-		if opts.Gen == "flat" {
-			emitLog("info", "Gerador selecionado: superflat")
-		} else {
-			emitLog("info", "Gerador selecionado: terreno natural")
-		}
-	}
-
 	if opts.RequireWorld {
-		// O app só oferece "Iniciar" com um mundo importado. A checagem fica no
-		// binário também para o caso de um mundo ter sido apagado ou copiado pela
-		// metade: melhor recusar do que subir um mundo vazio em cima do arquivo.
 		if v := validateWorldDir(opts.World); !v.OK {
 			return worldErr(v.Code, "%s", v.Detail)
 		}
@@ -306,15 +322,9 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 	uc.Players.MaxCount = opts.MaxPlayers
 	// Mesmo intervalo do aplicativo (4..24); fora dele o valor é ajustado e o
 	// ajuste é registrado, em vez de aceitar silenciosamente.
-	view := opts.ViewDistance
-	if view < 4 {
-		view = 4
-	}
-	if view > 24 {
-		view = 24
-	}
+	view := clampViewDistance(opts.ViewDistance)
 	if view != opts.ViewDistance {
-		emitLog("warn", fmt.Sprintf("Distância de visão %d fora de 4..24: usando %d", opts.ViewDistance, view))
+		emitLog("warn", fmt.Sprintf("Distância de visão %d fora de %d..%d: usando %d", opts.ViewDistance, viewDistanceMin, viewDistanceMax, view))
 	}
 	uc.Players.MaximumChunkRadius = view
 	uc.Players.SaveData = true
@@ -333,6 +343,14 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 			"não foi possível abrir o mundo: %v. Se ele foi importado agora, exporte de novo pelo Minecraft "+
 				"(Exportar mundo) e importe o .mcworld outra vez", err)
 	}
+	// mcdb.Open já leu level.dat e abriu o LevelDB. O preflight decodifica ou
+	// gera em memória o chunk de nascimento. A política NOVA só é gravada
+	// depois que o servidor abriu e pelo menos um transporte respondeu.
+	if err := preflightWorld(conf.WorldProvider, effective.Overworld); err != nil {
+		_ = conf.WorldProvider.Close()
+		return worldErr(worldCodeIncompatible, "%v", err)
+	}
+	opts.Gen = effective.Overworld
 	conf.AuthDisabled = !opts.Auth
 	if opts.Auth {
 		if err := xboxAuthReachable(ctx, protocol.CurrentVersion); err != nil {
@@ -349,7 +367,7 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 		}
 	}
 	conf.Allower = &banAllower{bans: bans}
-	conf.Generator = generatorFor(opts.Gen)
+	conf.Generator = generatorFor(effective.Overworld)
 	conf.SaveInterval = 2 * time.Minute
 	conf.ChunkUnloadInterval = 2 * time.Minute
 	conf.DisableResourceBuilding = true
@@ -445,7 +463,7 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 
 		// Brand new worlds get an explicit spawn so players never land inside
 		// terrain (natural generation) or fall into the void (superflat).
-		if !imported {
+		if !existed {
 			overworld.SetSpawn(defaultSpawn(opts.Gen, world.Overworld))
 			if n := srv.Nether(); n != nil {
 				n.SetSpawn(defaultSpawn("flat", world.Nether))
@@ -465,7 +483,7 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 		bans:      bans,
 		stop:      stop,
 		log:       log,
-		loaded:    imported,
+		loaded:    existed,
 		startedAt: time.Now().Unix(),
 	}
 
@@ -531,24 +549,36 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 		return fmt.Errorf("nenhum transporte abriu a porta: %v", raknetErr)
 	}
 
+	if err := commitGenerationPolicy(resolution); err != nil {
+		_ = srv.Close()
+		return generationErr("generation_policy_write", "não foi possível gravar a política validada: %v", err)
+	}
+	if resolution.IsNew {
+		emitLog("info", fmt.Sprintf("Política registrada para o mundo %s: %s/%s, origem %s, versão %s",
+			effective.WorldID, effective.Engine, effective.Overworld, originLabel(effective.Origin), effective.EngineVersion))
+	}
 	emit(map[string]any{
-		"t":        "ready",
-		"port":     opts.Port,
-		"name":     opts.Name,
-		"version":  protocol.CurrentVersion,
-		"protocol": protocol.CurrentProtocol,
-		"max":      opts.MaxPlayers,
-		"gen":      opts.Gen,
-		"imported": imported,
-		"auth":      !conf.AuthDisabled,
-		"nethernet": opts.NetherNet && signErr == nil,
-		"raknet":    opts.RakNet && raknetErr == nil,
+		"t":          "ready",
+		"port":       opts.Port,
+		"name":       opts.Name,
+		"version":    protocol.CurrentVersion,
+		"protocol":   protocol.CurrentProtocol,
+		"max":        opts.MaxPlayers,
+		"gen":        effective.Overworld,
+		"origin":     effective.Origin,
+		"imported":   effective.Origin == originImported,
+		"generation": effective,
+		"appVersion": appVersion,
+		"revision":   buildRevision,
+		"sourceHash": buildSourceHash,
+		"auth":       !conf.AuthDisabled,
+		"nethernet":  opts.NetherNet && signErr == nil,
+		"raknet":     opts.RakNet && raknetErr == nil,
 		"transports": transports,
-		"signaling": signalling,
-		"ice":       iceRep,
+		"signaling":  signalling,
+		"ice":        iceRep,
 	})
-	emitLog("info", fmt.Sprintf("Servidor de Minecraft Bedrock %s (protocolo %d) escutando na porta UDP %d",
-		protocol.CurrentVersion, protocol.CurrentProtocol, opts.Port))
+	emitLog("info", transportSummary(protocol.CurrentVersion, protocol.CurrentProtocol, opts, transports, udpMin, udpMax))
 	if opts.readyHook != nil {
 		opts.readyHook(srv)
 	}
@@ -596,15 +626,14 @@ func runServer(ctx context.Context, opts options, log *slog.Logger, stop context
 
 	<-ctx.Done()
 	emitLog("info", "Desligando o servidor e salvando o mundo...")
-	if err := srv.Close(); err != nil {
-		emitLog("error", "Erro ao fechar o servidor: "+err.Error())
+	closeErr := srv.Close()
+	if closeErr != nil {
+		emitLog("error", "Erro ao fechar/salvar o servidor: "+closeErr.Error())
 	} else {
-		// Evento de salvamento concluído: é a única prova que o app usa para
-		// mostrar "Último salvamento".
 		emit(map[string]any{"t": "saved", "at": time.Now().UnixMilli()})
 	}
-	emitLog("info", "Mundo salvo. Servidor desligado.")
-	emit(map[string]any{"t": "stopped"})
+	emitLog("info", "Servidor desligado.")
+	emit(map[string]any{"t": "stopped", "saved": closeErr == nil})
 	return nil
 }
 
@@ -763,6 +792,42 @@ func checkPortAvailable(port int) error {
 		return fmt.Errorf("a porta %d já está em uso neste celular. Escolha outra porta nas configurações", port)
 	}
 	return c.Close()
+}
+
+const (
+	viewDistanceMin     = 4
+	viewDistanceMax     = 24
+	viewDistanceDefault = 8
+)
+
+func clampViewDistance(v int) int {
+	if v < viewDistanceMin {
+		return viewDistanceMin
+	}
+	if v > viewDistanceMax {
+		return viewDistanceMax
+	}
+	return v
+}
+
+// transportSummary não anuncia UDP 19132 como ativo quando só a sinalização
+// TCP do NetherNet respondeu. A faixa de mídia é configurada, não um teste de
+// acesso externo.
+func transportSummary(version string, proto int, opts options, active []string, udpMin, udpMax uint16) string {
+	summary := fmt.Sprintf("Servidor de Minecraft Bedrock %s (protocolo %d). Transportes ativos: %s.",
+		version, proto, strings.Join(active, ", "))
+	for _, t := range active {
+		switch t {
+		case "nethernet":
+			summary += fmt.Sprintf(" NetherNet: sinalização TCP :%d; mídia WebRTC configurada para UDP %d–%d.", opts.Port, udpMin, udpMax)
+		case "raknet":
+			summary += fmt.Sprintf(" RakNet ativo: UDP :%d.", opts.Port)
+		}
+	}
+	if !opts.RakNet {
+		summary += " RakNet desligado; a porta UDP legada não está ativa."
+	}
+	return summary
 }
 
 func generatorFor(kind string) func(world.Dimension) world.Generator {

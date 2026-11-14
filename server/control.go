@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -269,6 +270,8 @@ func (rt *runtime) handleCommand(c command) {
 		}
 	case "avatar":
 		rt.resendAvatar(c.Name)
+	case "avatar_export":
+		rt.exportAvatar(c.Name, c.ID)
 	case "say":
 		msg := strings.TrimSpace(c.Msg)
 		if msg == "" {
@@ -313,6 +316,32 @@ func (rt *runtime) resendAvatar(name string) {
 		return
 	}
 	rt.emitAvatar(id, entry.Name, entry.XUID, s, true)
+}
+
+// exportAvatar é explicitamente pedido pelo usuário. Envia apenas PNG da
+// textura e os bytes do modelo recebidos nesta sessão, sem FullID/login/tokens.
+func (rt *runtime) exportAvatar(name, requestID string) {
+	entry, ok := rt.reg.byName(name)
+	if !ok {
+		emit(map[string]any{"t": "avatar_export", "id": requestID, "name": name, "ok": false, "reason": "jogador não está mais online"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := player.Call(ctx, entry.handle, func(tx *world.Tx, p *player.Player) (skin.Skin, error) {
+		return p.Skin(), nil
+	})
+	if err != nil {
+		emit(map[string]any{"t": "avatar_export", "id": requestID, "name": name, "ok": false, "reason": "não foi possível ler a skin da sessão: " + err.Error()})
+		return
+	}
+	export := buildSkinExport(s)
+	emit(map[string]any{
+		"t": "avatar_export", "id": requestID, "name": name, "ok": true,
+		"texture": base64.StdEncoding.EncodeToString(export.TexturePNG),
+		"model":   base64.StdEncoding.EncodeToString(export.ModelJSON),
+		"info":    export.Info, "reason": export.Reason,
+	})
 }
 
 func (rt *runtime) kick(name, reason string) bool {

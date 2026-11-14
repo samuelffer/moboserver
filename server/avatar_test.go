@@ -311,3 +311,102 @@ func TestAvatarModelLimits(t *testing.T) {
 		t.Fatalf("modelo gigante deveria ser recusado: %+v", res)
 	}
 }
+
+func TestAvatarGeometryFailureCodes(t *testing.T) {
+	cases := []struct {
+		name    string
+		model   string
+		code    string
+		persona bool
+	}{
+		{"head ausente", `{"minecraft:geometry":[{"description":{"identifier":"geometry.custom"},"bones":[{"name":"body","cubes":[]}]}]}`, avatarHeadMissing, false},
+		{"head sem cubos", `{"minecraft:geometry":[{"description":{"identifier":"geometry.custom"},"bones":[{"name":"head","cubes":[]}]}]}`, avatarHeadWithoutCubes, false},
+		{"descendente", `{"minecraft:geometry":[{"description":{"identifier":"geometry.custom"},"bones":[{"name":"head","cubes":[]},{"name":"helmet","parent":"head","cubes":[{"origin":[-4,24,-4],"size":[8,8,8],"uv":[0,0]}]}]}]}`, avatarHeadDescendant, false},
+		{"malha livre", `{"minecraft:geometry":[{"description":{"identifier":"geometry.custom"},"bones":[{"name":"head","texture_meshes":[{"texture":0}],"cubes":[]}]}]}`, avatarUnsupportedMesh, false},
+		{"parse", `{`, avatarModelParse, false},
+		{"selecao ausente", `{"minecraft:geometry":[{"description":{"identifier":"geometry.a"},"bones":[]},{"description":{"identifier":"geometry.b"},"bones":[]}]}`, avatarGeometrySelection, false},
+		{"persona sem modelo", ``, avatarPersonaNoModel, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := skin.New(64, 64)
+			s.Persona = tc.persona
+			s.Model = []byte(tc.model)
+			res := renderAvatar(s)
+			if res.Available || res.Info.Code != tc.code {
+				t.Fatalf("código %s esperado, veio %+v", tc.code, res)
+			}
+			if res.Reason == "" {
+				t.Fatal("motivo completo vazio")
+			}
+		})
+	}
+}
+
+func TestAvatarGeometryUVOutside(t *testing.T) {
+	s := skin.New(64, 64)
+	s.Model = geometryJSON("geometry.custom", 64, avatarCube(60, 60, 8, 0))
+	res := renderAvatar(s)
+	if res.Available || res.Info.Code != avatarUVOutside || !res.Info.UVOutside {
+		t.Fatalf("UV fora da textura deveria ser específica: %+v", res)
+	}
+}
+
+func TestAvatarGeometryPerFaceUV(t *testing.T) {
+	s := skin.New(64, 64)
+	face := color.RGBA{R: 21, G: 43, B: 65, A: 255}
+	fillSkin(&s, 12, 20, 8, face)
+	s.Model = []byte(`{"format_version":"1.21.0","minecraft:geometry":[{"description":{"identifier":"geometry.persona.test","texture_width":64,"texture_height":64},"bones":[{"name":"head","cubes":[{"origin":[-4,24,-4],"size":[8,8,8],"uv":{"north":{"uv":[12,20],"uv_size":[8,8]},"south":{"uv":[0,0],"uv_size":[8,8]}}}]}]}]}`)
+	res := renderAvatar(s)
+	if !res.Available || res.Info.UVMode != "per-face" {
+		t.Fatalf("UV por face suportada não renderizou: %+v", res)
+	}
+	if got := rgbaAt(decodeAvatar(t, res), 0, 0); got.R != face.R || got.G != face.G || got.B != face.B {
+		t.Fatalf("recorte por face errado: %v", got)
+	}
+	missing := skin.New(64, 64)
+	missing.Model = []byte(`{"minecraft:geometry":[{"description":{"identifier":"geometry.custom"},"bones":[{"name":"head","cubes":[{"size":[8,8,8],"uv":{"south":{"uv":[0,0],"uv_size":[8,8]}}}]}]}]}`)
+	if r := renderAvatar(missing); r.Available || r.Info.Code != avatarUVPerFaceMissing {
+		t.Fatalf("face frontal ausente deveria ser diagnosticada: %+v", r)
+	}
+}
+
+func TestAvatarPartialAlphaStaysStraight(t *testing.T) {
+	s := skin.New(64, 64)
+	// Canal de cor maior que o alfa: em image.RGBA pré-multiplicado isto seria
+	// escurecido/clampado; a textura Bedrock é alfa direto.
+	fillSkin(&s, 8, 8, 8, color.RGBA{R: 220, G: 100, B: 40, A: 128})
+	res := renderAvatar(s)
+	got := rgbaAt(decodeAvatar(t, res), 0, 0)
+	if got.R != 220 || got.G != 100 || got.B != 40 || got.A != 128 {
+		t.Fatalf("alfa parcial perdeu canais diretos: %v", got)
+	}
+}
+
+func TestSkinExportOnlyTextureAndModel(t *testing.T) {
+	s := skin.New(256, 256)
+	fillSkin(&s, 0, 0, 16, color.RGBA{R: 200, G: 10, B: 20, A: 128})
+	s.Model = []byte(`{"format_version":"1.21.0","minecraft:geometry":[]}`)
+	s.FullID = "must-not-export"
+	s.Cape = skin.NewCape(64, 32)
+	export := buildSkinExport(s)
+	img, err := png.Decode(bytes.NewReader(export.TexturePNG))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if img.Bounds().Dx() != 256 || img.Bounds().Dy() != 256 {
+		t.Fatalf("textura exportada não é 256x256: %v", img.Bounds())
+	}
+	if got := rgbaAt(img, 0, 0); got.R != 200 || got.A != 128 {
+		t.Fatalf("textura exportada perdeu alfa: %v", got)
+	}
+	if !bytes.Equal(export.ModelJSON, s.Model) {
+		t.Fatal("modelo exportado não é o JSON recebido")
+	}
+	if strings.Contains(string(export.ModelJSON), "must-not-export") {
+		t.Fatal("vazou identificador de login")
+	}
+	if export.Info.PixelBytes != 262144 || export.Info.ModelBytes != len(s.Model) {
+		t.Fatalf("diagnóstico incompleto: %+v", export.Info)
+	}
+}

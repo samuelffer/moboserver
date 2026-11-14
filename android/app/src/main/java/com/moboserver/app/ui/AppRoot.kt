@@ -71,12 +71,24 @@ fun AppRoot() {
 
     var page by rememberSaveable { mutableStateOf(Page.Home) }
     var pendingExport by remember { mutableStateOf<String?>(null) }
+    var pendingSkinExport by remember { mutableStateOf<String?>(null) }
 
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
             vm.importWorld(uri)
         } else {
             vm.showMessage("Importação cancelada.")
+        }
+    }
+    val skinExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip"),
+    ) { uri: Uri? ->
+        val id = pendingSkinExport
+        pendingSkinExport = null
+        if (uri != null && id != null) {
+            vm.exportSkin(id, uri)
+        } else {
+            vm.showMessage("Exportação de skin cancelada.")
         }
     }
     val exporter = rememberLauncherForActivityResult(
@@ -98,6 +110,10 @@ fun AppRoot() {
                 is PanelEvent.ExportWorld -> {
                     pendingExport = event.id
                     exporter.launch(event.suggestedName)
+                }
+                is PanelEvent.ExportSkin -> {
+                    pendingSkinExport = event.id
+                    skinExporter.launch(event.suggestedName)
                 }
                 is PanelEvent.ShareText -> shareText(context, event.subject, event.body)
             }
@@ -189,7 +205,8 @@ fun AppRoot() {
                     dark = dark,
                     gameMode = extras.gameMode,
                     difficulty = extras.difficulty,
-                    onSave = { mode, diff -> vm.saveGame(mode, diff); close() },
+                    generator = extras.generator,
+                    onSave = { mode, diff, gen -> vm.saveGame(mode, diff, gen); close() },
                     onDismiss = close,
                 )
                 PanelDialog.Appearance -> AppearanceDialog(
@@ -205,6 +222,7 @@ fun AppRoot() {
                         (panel.phase == Phase.Starting || panel.phase == Phase.Running || panel.phase == Phase.Stopping),
                     onExport = { vm.requestExport(dialog.id); close() },
                     onValidate = { vm.validateWorld(dialog.id); close() },
+                    onRecoverPolicy = { vm.openDialog(PanelDialog.RecoverPolicy(dialog.id, dialog.name)) },
                     onDelete = { vm.confirmDelete(dialog.id) },
                     onDismiss = close,
                 )
@@ -212,6 +230,13 @@ fun AppRoot() {
                     dark = dark,
                     name = dialog.name,
                     onConfirm = { vm.deleteWorld(dialog.id); close() },
+                    onDismiss = close,
+                )
+                is PanelDialog.RecoverPolicy -> RecoverPolicyDialog(
+                    dark = dark,
+                    name = dialog.name,
+                    onReset = { vm.recoverPolicy(dialog.id, "reset"); close() },
+                    onAdoptLegacy = { vm.recoverPolicy(dialog.id, "adopt-legacy"); close() },
                     onDismiss = close,
                 )
                 is PanelDialog.Text -> TextDialog(
@@ -232,9 +257,10 @@ fun AppRoot() {
                             AvatarStateUi.Failed -> "falhou"
                             else -> "carregando"
                         },
-                        reason = player?.avatarReason.orEmpty(),
+                        reason = player?.avatarDetailReason.orEmpty(),
                         infoSummary = player?.avatarInfo.orEmpty(),
                         onRetry = { vm.retryAvatar(dialog.id); close() },
+                        onExport = { vm.requestSkinExport(dialog.id); close() },
                         onDismiss = close,
                     )
                 }

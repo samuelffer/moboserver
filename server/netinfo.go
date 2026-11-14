@@ -80,12 +80,12 @@ func probeInterfaces(port int, targets []lanTarget) []lanTarget {
 // protocol, version) is parsed as well: it is the same JSON the Bedrock client
 // receives when it probes the server by address.
 type signallingInfo struct {
-	Status   int    `json:"status"`
-	Name     string `json:"name,omitempty"`
-	Protocol int    `json:"protocol,omitempty"`
-	Version  string `json:"version,omitempty"`
-	Players  int    `json:"players,omitempty"`
-	Max      int    `json:"max,omitempty"`
+	Status    int    `json:"status"`
+	Name      string `json:"name,omitempty"`
+	Protocol  int    `json:"protocol,omitempty"`
+	Version   string `json:"version,omitempty"`
+	Players   int    `json:"players,omitempty"`
+	Max       int    `json:"max,omitempty"`
 	Body      string `json:"body,omitempty"`
 	LatencyMS int64  `json:"latencyMs,omitempty"`
 }

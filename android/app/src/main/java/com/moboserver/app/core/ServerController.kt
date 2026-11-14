@@ -2,6 +2,7 @@ package com.moboserver.app.core
 
 import android.app.ActivityManager
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +20,8 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /**
  * Single owner of the embedded server process. Both the UI and the foreground
@@ -56,6 +59,8 @@ object ServerController {
         var startedAtMs: Long = 0L
         /** Mundo capturado no início: a sessão não relê a seleção depois. */
         var worldId: String = ""
+        var recovery: String = ""
+        var stoppedEventSeen = false
     }
 
     private var appContext: Context? = null
@@ -66,6 +71,31 @@ object ServerController {
 
     private val _state = MutableStateFlow(RuntimeState())
     val state: StateFlow<RuntimeState> = _state
+
+    private val pendingRecovery = HashMap<String, String>()
+    private val pendingSkinExports = HashMap<String, Uri>()
+    private val skinExportSeq = java.util.concurrent.atomic.AtomicLong(0)
+    private val _skinExports = kotlinx.coroutines.flow.MutableSharedFlow<SkinExportReady>(extraBufferCapacity = 4)
+    val skinExports: kotlinx.coroutines.flow.SharedFlow<SkinExportReady> = _skinExports
+
+    /** Ação explícita do usuário: vale para o próximo início deste mundo. */
+    @Synchronized
+    fun requestGenerationRecovery(id: String, mode: String): Boolean {
+        if (isBusy) {
+            appendLog("warn", "Recuperação de geração recusada: servidor em execução.")
+            return false
+        }
+        if (mode != "reset" && mode != "adopt-legacy") return false
+        val repository = worlds() ?: return false
+        if (!repository.exists(id)) return false
+        pendingRecovery[id] = mode
+        appendLog("info", "Recuperação de geração armada para $id: $mode (só será gravada após o mundo iniciar validado).")
+        return true
+    }
+
+    fun clearGenerationRecovery(id: String) {
+        synchronized(this) { pendingRecovery.remove(id) }
+    }
 
     fun init(context: Context) {
         if (appContext == null) {
@@ -195,6 +225,7 @@ object ServerController {
         val repository = WorldRepository(context)
         val worldId = config.activeWorldId
         s.worldId = worldId
+        s.recovery = synchronized(this) { pendingRecovery[worldId].orEmpty() }
 
         val version = appVersion()
         appendLog(
@@ -259,7 +290,7 @@ object ServerController {
             )
         }
 
-        appendLog("info", "Iniciando servidor \"${config.serverName}\" na porta UDP ${config.port}")
+        appendLog("info", "Iniciando servidor \"${config.serverName}\" na porta configurada ${config.port} (transportes serão confirmados abaixo)")
         val binary = try {
             ServerProcess.resolveBinary(context)
         } catch (e: Exception) {
@@ -290,7 +321,7 @@ object ServerController {
         val process = ServerProcess(
             binary = binary,
             workDir = context.filesDir,
-            args = buildArgs(context, config, worldDir),
+            args = buildArgs(context, config, worldDir, s),
             environment = buildEnvironment(context),
             listener = { event -> onEvent(s, event) },
         )
@@ -298,6 +329,7 @@ object ServerController {
         s.startedAtMs = System.currentTimeMillis()
         try {
             process.start()
+            synchronized(this) { pendingRecovery.remove(worldId) }
             IfaceReporter.startWatching(context) { process.isAlive }
         } catch (e: Exception) {
             Log.e(TAG, "failed to start server", e)
@@ -334,8 +366,8 @@ object ServerController {
         }
 
         _state.update { it.copy(status = ServerStatus.STOPPING) }
-        appendLog("info", "Desligando o servidor e salvando o mundo...")
-
+        // A mensagem de desligamento/salvamento vem do processo Go uma única
+        // vez. Se ele morrer antes de confirmar, o handler de Exited avisa.
         val sent = process.send(command("stop").toString())
         s.stopJob = scope.launch {
             if (!sent) {
@@ -500,6 +532,9 @@ object ServerController {
                         working = false,
                         publicIp = observed ?: st.exposure.publicIp,
                         wanIp = st.exposure.wanIp ?: wanIp,
+                        externalVerified = if (observed != null && st.exposure.externalVerifiedIp != null && observed != st.exposure.externalVerifiedIp) null else st.exposure.externalVerified,
+                        externalVerifiedIp = if (observed != null && st.exposure.externalVerifiedIp != null && observed != st.exposure.externalVerifiedIp) null else st.exposure.externalVerifiedIp,
+                        externalCheck = if (observed != null && st.exposure.externalVerifiedIp != null && observed != st.exposure.externalVerifiedIp) "O endereço observado mudou; o teste anterior foi invalidado." else st.exposure.externalCheck,
                     ),
                 )
             }
@@ -509,16 +544,22 @@ object ServerController {
 
     /** Asks a public API whether the server is reachable from the internet. */
     fun checkExternalAccess() {
+        if (_state.value.status != ServerStatus.RUNNING) {
+            _state.update { st -> st.copy(exposure = st.exposure.copy(externalCheck = "Inicie o servidor antes de testar acesso externo.")) }
+            return
+        }
         val owner = session
         val exposure = _state.value.exposure
         val port = _state.value.info?.port ?: Store.config.value.port
-        val target = exposure.publicIp ?: exposure.wanIp
+        val target = exposure.publicIp?.takeIf { AddressClassifier.isPublicIpv4(it) }
+            ?: exposure.wanIp?.takeIf { AddressClassifier.isPublicIpv4(it) }
         if (target.isNullOrBlank()) {
             _state.update { st ->
                 st.copy(
                     exposure = st.exposure.copy(
                         externalVerified = false,
-                        externalCheck = "Sem endereço público conhecido: não deu para testar.",
+                        externalVerifiedIp = null,
+                        externalCheck = "Sem IPv4 público válido e utilizável: não deu para testar. WAN privada/CGNAT continua só no diagnóstico.",
                     ),
                 )
             }
@@ -539,6 +580,7 @@ object ServerController {
                         working = false,
                         externalCheck = result,
                         externalVerified = verified,
+                        externalVerifiedIp = if (verified) target else null,
                     ),
                 )
             }
@@ -553,15 +595,15 @@ object ServerController {
     fun describeInternet(lanIp: String?, exposure: Exposure): String {
         val lines = ArrayList<String>()
         lines.add(if (lanIp != null) "Rede local: $lanIp" else "Sem Wi-Fi ativo")
-        exposure.wanIp?.let { lines.add("Endereço informado pelo roteador (UPnP): $it") }
-        exposure.publicIp?.let { lines.add("Endereço visto por um servidor STUN: $it") }
+        exposure.wanIp?.let { lines.add("WAN do roteador (${if (AddressClassifier.looksLikeIpv6(it)) AddressClassifier.ipv6Kind(it) else AddressClassifier.ipv4Kind(it)}): $it") }
+        exposure.publicIp?.let { lines.add("Observado por STUN (${if (AddressClassifier.looksLikeIpv6(it)) AddressClassifier.ipv6Kind(it) else AddressClassifier.ipv4Kind(it)}): $it") }
         if (exposure.wanIp != null && exposure.publicIp != null && exposure.wanIp != exposure.publicIp) {
             lines.add(
                 "O roteador e o STUN discordam: provavelmente há outro NAT entre o roteador e a internet.",
             )
         }
         exposure.publicIp?.let { ip ->
-            if (Net.isPrivateIp(ip)) {
+            if (AddressClassifier.isPrivateIpv4(ip)) {
                 lines.add("O endereço observado é privado: o celular não tem caminho direto para a internet.")
             } else if (Net.isCarrierGradeNat(ip)) {
                 lines.add("O endereço observado está em 100.64/10: indício de CGNAT do provedor.")
@@ -644,6 +686,13 @@ object ServerController {
                             iceError = event.iceError,
                             transports = event.transports,
                             signalingLatencyMs = event.signalingLatencyMs,
+                            generator = event.generator,
+                            origin = event.origin,
+                            generationEngine = event.generationEngine,
+                            generationVersion = event.generationVersion,
+                            appVersion = event.appVersion,
+                            revision = event.revision,
+                            sourceHash = event.sourceHash,
                         ),
                         error = null,
                     )
@@ -662,8 +711,18 @@ object ServerController {
                             ""
                         },
                 )
+                if (event.generator.isNotBlank()) {
+                    appendLog("info", "Geração efetiva deste mundo: ${event.generator} (${event.generationEngine}, versão ${event.generationVersion}); origem ${event.origin}.")
+                }
+                if (event.appVersion.isNotBlank() || event.revision.isNotBlank()) {
+                    appendLog("info", "Servidor embutido: app=${event.appVersion} revision=${event.revision} source=${event.sourceHash}")
+                }
+                val netherNetActive = event.transports.contains("nethernet") || event.signalingOk
+                if (!netherNetActive) {
+                    appendLog("info", "NetherNet desligado ou sem sinalização confirmada; não há porta UDP legada ativa por isso.")
+                }
                 appendLog(
-                    if (event.signalingOk) "info" else "error",
+                    if (event.signalingOk) "info" else if (netherNetActive) "error" else "debug",
                     if (event.signalingOk) {
                         "Sinalização NetherNet: GET /v1/join respondeu 200 (nome \"${event.signalingName}\", " +
                             "protocolo ${event.signalingProtocol})"
@@ -673,7 +732,7 @@ object ServerController {
                     },
                 )
                 appendLog(
-                    if (event.iceOk) "info" else "error",
+                    if (event.iceOk) "info" else if (netherNetActive) "error" else "debug",
                     if (event.iceOk) {
                         "Negociação ICE: ${event.iceCandidates} candidato(s) local(is) em " +
                             "${event.iceHosts.joinToString(", ").ifBlank { "?" }} " +
@@ -812,17 +871,28 @@ object ServerController {
 
             is ServerEvent.SaveFailed -> appendLog("error", "O servidor não conseguiu salvar o mundo.")
 
-            is ServerEvent.Stopped -> Unit
+            is ServerEvent.Stopped -> {
+                s.stoppedEventSeen = true
+                if (!event.saved) {
+                    appendLog("error", "O servidor encerrou sem confirmar que o mundo foi salvo por completo.")
+                }
+            }
 
             is ServerEvent.Fatal -> fail(
                 s,
-                StartFailure(
-                    problem = StartProblem.OTHER,
-                    title = "O servidor parou",
-                    message = event.message,
-                    technical = "evento fatal do binário",
-                ),
+                if (event.code.startsWith("generation_")) {
+                    WorldDiagnosis.generationFailure(event.code, event.message)
+                } else {
+                    StartFailure(
+                        problem = StartProblem.OTHER,
+                        title = "O servidor parou",
+                        message = event.message,
+                        technical = "evento fatal do binário code=${event.code}",
+                    )
+                },
             )
+
+            is ServerEvent.AvatarExport -> handleAvatarExport(s, event)
 
             is ServerEvent.Exited -> {
                 LanProbe.stop()
@@ -836,7 +906,9 @@ object ServerController {
                         ) {
                             markStopped()
                         }
-                        appendLog("info", "Servidor desligado.")
+                        if (!s.stoppedEventSeen) {
+                            appendLog("warn", "O processo encerrou antes de confirmar o desligamento/salvamento do mundo.")
+                        }
                     }
                     status == ServerStatus.ERROR -> Unit
                     else -> fail(
@@ -1028,6 +1100,62 @@ object ServerController {
 
     private val avatarRequests = HashMap<String, Long>()
 
+    /** Exportação explícita: o usuário escolhe o destino (.zip) antes do pedido. */
+    fun requestAvatarExport(name: String, output: Uri) {
+        if (name.isBlank()) return
+        if (_state.value.status != ServerStatus.RUNNING) {
+            _skinExports.tryEmit(SkinExportReady("", "Inicie o servidor e conecte o jogador antes de exportar a skin.", false))
+            return
+        }
+        val id = "skin-" + skinExportSeq.incrementAndGet()
+        synchronized(pendingSkinExports) { pendingSkinExports[id] = output }
+        val sent = sendCommand(JSONObject().put("cmd", "avatar_export").put("name", name).put("id", id))
+        if (!sent) {
+            synchronized(pendingSkinExports) { pendingSkinExports.remove(id) }
+            _skinExports.tryEmit(SkinExportReady("", "Não foi possível pedir a skin ao servidor.", false))
+        }
+    }
+
+    private fun handleAvatarExport(s: Session, event: ServerEvent.AvatarExport) {
+        val output = synchronized(pendingSkinExports) { pendingSkinExports.remove(event.id) } ?: return
+        val context = appContext ?: return
+        if (!stillSame(s)) return
+        if (!event.ok) {
+            _skinExports.tryEmit(SkinExportReady("", event.reason.ifBlank { "O servidor não conseguiu exportar a skin." }, false))
+            return
+        }
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    val texture = if (event.texture.isBlank()) ByteArray(0) else android.util.Base64.decode(event.texture, android.util.Base64.DEFAULT)
+                    val model = if (event.model.isBlank()) ByteArray(0) else android.util.Base64.decode(event.model, android.util.Base64.DEFAULT)
+                    if (texture.isEmpty()) error("textura vazia")
+                    context.contentResolver.openOutputStream(output)?.use { stream ->
+                        ZipOutputStream(stream).use { zip ->
+                            zip.putNextEntry(ZipEntry("texture.png")); zip.write(texture); zip.closeEntry()
+                            if (model.isNotEmpty()) {
+                                zip.putNextEntry(ZipEntry("model.json")); zip.write(model); zip.closeEntry()
+                            }
+                            val report = buildString {
+                                appendLine("MoboServer — diagnóstico de skin (exportação explícita)")
+                                appendLine("Jogador: ${event.name}")
+                                appendLine("Motivo: ${event.reason.ifBlank { "miniatura gerada" }}")
+                                appendLine(event.info.summary())
+                                appendLine("Conteúdo: texture.png" + if (model.isNotEmpty()) ", model.json" else " (modelo não enviado pelo cliente)")
+                                appendLine("Não inclui tokens, ClientData, pacote de login, capa ou animações.")
+                            }
+                            zip.putNextEntry(ZipEntry("diagnostico.txt")); zip.write(report.toByteArray(Charsets.UTF_8)); zip.closeEntry()
+                        }
+                    } ?: error("não foi possível abrir o destino escolhido")
+                    SkinExportReady(output.toString(), "Skin exportada: textura" + if (model.isNotEmpty()) " e modelo JSON." else "; o cliente não enviou modelo JSON.", true)
+                } catch (e: Exception) {
+                    SkinExportReady("", "Falha ao exportar skin: ${e.message}", false)
+                }
+            }
+            _skinExports.tryEmit(result)
+        }
+    }
+
     /** Mediana/mínimo/máximo dos pings válidos, guardando os últimos 60 s. */
     private fun recordPings(history: List<PingSample>, players: List<PlayerInfo>): List<PingSample> {
         val valid = players.map { it.pingMs }.filter { it >= 0 }.sorted()
@@ -1154,6 +1282,15 @@ object ServerController {
                     "db=${facts?.dbFiles ?: 0} arquivo(s)",
             )
             add("Mundos listados: ${repository.list().size}")
+            if (config.activeWorldId.isNotBlank()) {
+                val gen = repository.generationFile(config.activeWorldId)
+                add("Política de geração: ${gen.absolutePath} existe=${gen.isFile}")
+                add("Origem: ${repository.originFile(config.activeWorldId).absolutePath} existe=${repository.originFile(config.activeWorldId).isFile}")
+            }
+            _state.value.info?.let { info ->
+                add("Servidor fonte: app=${info.appVersion} revision=${info.revision} source=${info.sourceHash}")
+                add("Geração efetiva: ${info.generator} engine=${info.generationEngine} versão=${info.generationVersion} origem=${info.origin}")
+            }
             add("Sessão: status=${_state.value.status} mundo=${runningWorldId ?: "-"}")
             if (failure != null) {
                 add("Última falha: ${WorldDiagnosis.code(failure.problem)} — ${failure.title}")
@@ -1220,8 +1357,9 @@ object ServerController {
         return servers.joinToString(",")
     }
 
-    private fun buildArgs(context: Context, config: ServerConfig, worldDir: File): List<String> = listOf(
+    private fun buildArgs(context: Context, config: ServerConfig, worldDir: File, s: Session): List<String> = listOf(
         "-world", worldDir.absolutePath,
+        "-world-id", s.worldId,
         "-players", File(context.filesDir, "players").absolutePath,
         "-data", context.filesDir.absolutePath,
         "-bans", File(context.filesDir, "bans.json").absolutePath,
@@ -1244,7 +1382,20 @@ object ServerController {
         "-raknet=${config.rakNet}",
         // DEBUG só com "Diagnóstico avançado"; o padrão é INFO.
         "-log-level", if (config.advancedDiagnostics) "debug" else "info",
-    ) + tunnelArgs(config)
+    ) + worldPolicyArgs(context, s) + tunnelArgs(config)
+
+    private fun worldPolicyArgs(context: Context, s: Session): List<String> {
+        val repository = WorldRepository(context)
+        val args = ArrayList<String>()
+        val origin = repository.originFile(s.worldId)
+        if (origin.isFile) {
+            args += listOf("-world-origin-file", origin.absolutePath)
+        }
+        if (s.recovery.isNotBlank()) {
+            args += listOf("-generation-recovery", s.recovery)
+        }
+        return args
+    }
 
     /**
      * Flags do túnel. Os dois modos são separados de propósito:

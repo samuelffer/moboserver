@@ -47,19 +47,19 @@ import (
 
 // netherNetOptions holds everything the custom NetherNet listener needs.
 type netherNetOptions struct {
-	Address        string
-	KeyFile        string
-	Domain         string
-	UDPPortsMin    uint16
-	UDPPortsMax    uint16
+	Address     string
+	KeyFile     string
+	Domain      string
+	UDPPortsMin uint16
+	UDPPortsMax uint16
 	// PublicIP, quando preenchido, faz o ICE anunciar candidatos com este
 	// endereco (o da VPS com mapeamento 1:1 de portas) em vez do IP local.
 	// Sem mapeamento 1:1 nao use: o candidato publicado precisa chegar ao
 	// celular na mesma porta.
-	PublicIP       string
+	PublicIP string
 	// UDPMux, quando definido, faz o ICE usar o mux do relay (portas publicas)
 	// em vez de soquetes locais.
-	UDPMux ice.UDPMux
+	UDPMux         ice.UDPMux
 	AllowAnonymous bool
 	Network        transport.Net
 	Log            *slog.Logger

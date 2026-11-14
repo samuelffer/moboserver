@@ -137,6 +137,16 @@ object WorldDiagnosis {
         )
     }
 
+    /** Bloqueio de política de geração: não é mundo corrompido nem permissão para regenerar. */
+    fun generationFailure(code: String, detail: String): StartFailure = StartFailure(
+        problem = StartProblem.VALIDATION_FAILED,
+        title = "Política de geração bloqueou o início",
+        message = detail.ifBlank { "A política de geração deste mundo precisa de recuperação explícita em Mundos > opções." },
+        technical = "generation code=$code",
+        openWorlds = true,
+        retryable = code != "generation_policy_invalid" && code != "generation_legacy_ambiguous",
+    )
+
     /** O validador estourou o prazo: não é o mesmo que "mundo inválido". */
     fun validationTimeout(seconds: Long): StartFailure = StartFailure(
         problem = StartProblem.VALIDATION_TIMEOUT,

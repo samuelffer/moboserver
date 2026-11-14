@@ -83,6 +83,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import com.moboserver.app.core.VIEW_DISTANCE_MIN
+import com.moboserver.app.core.VIEW_DISTANCE_MAX
+import com.moboserver.app.core.VIEW_DISTANCE_DEFAULT
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -107,6 +110,8 @@ data class PlayerUi(
     val head: ImageBitmap? = null,
     val avatarState: AvatarStateUi = AvatarStateUi.Loading,
     val avatarReason: String = "",
+    /** Motivo completo, só nos detalhes/diagnóstico. */
+    val avatarDetailReason: String = "",
     /** Resumo técnico da skin (dimensões, geometria), sem imagem. */
     val avatarInfo: String = "",
 )
@@ -723,15 +728,15 @@ private fun Tool(
             steps = 3,
             colors = moboSliderColors(),
         )
-        Rule(); var view by remember(s.viewDistance) { mutableFloatStateOf(s.viewDistance.toFloat().coerceIn(4f, 24f)) }
+        Rule(); var view by remember(s.viewDistance) { mutableFloatStateOf(s.viewDistance.toFloat().coerceIn(VIEW_DISTANCE_MIN.toFloat(), VIEW_DISTANCE_MAX.toFloat())) }
         Entry(Icons.Outlined.Visibility, "Distância de visão", "${view.toInt()} chunks")
         Slider(
             value = view,
             onValueChange = { view = it },
             onValueChangeFinished = { a.setViewDistance(view.toInt()) },
             // 4..24 com passo inteiro: 19 posições intermediárias.
-            valueRange = 4f..24f,
-            steps = 19,
+            valueRange = VIEW_DISTANCE_MIN.toFloat()..VIEW_DISTANCE_MAX.toFloat(),
+            steps = VIEW_DISTANCE_MAX - VIEW_DISTANCE_MIN - 1,
             colors = moboSliderColors(),
         )
     }

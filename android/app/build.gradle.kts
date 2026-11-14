@@ -1,8 +1,18 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val moboVersion = Properties().apply {
+    rootProject.file("../version.properties").inputStream().use { load(it) }
+}
+val moboVersionName = moboVersion.getProperty("versionName")
+    ?: throw GradleException("version.properties sem versionName")
+val moboVersionCode = moboVersion.getProperty("versionCode")?.toInt()
+    ?: throw GradleException("version.properties sem versionCode")
 
 android {
     namespace = "com.moboserver.app"
@@ -12,8 +22,8 @@ android {
         applicationId = "com.moboserver.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 18
-        versionName = "1.4.3"
+        versionCode = moboVersionCode
+        versionName = moboVersionName
 
         // Minecraft Bedrock is 64-bit only, so shipping a single ABI keeps the
         // APK small without limiting any supported device.

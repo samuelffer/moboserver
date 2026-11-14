@@ -56,22 +56,11 @@ object Net {
     }
 
     /** RFC 1918 + 100.64/10: addresses that cannot be reached from the internet. */
-    fun isPrivateIp(ip: String): Boolean {
-        val parts = ip.split('.')
-        if (parts.size != 4) return false
-        val a = parts[0].toIntOrNull() ?: return false
-        val b = parts[1].toIntOrNull() ?: return false
-        return a == 10 || (a == 172 && b in 16..31) || (a == 192 && b == 168) || isCarrierGradeNat(ip)
-    }
+    fun isPrivateIp(ip: String): Boolean =
+        AddressClassifier.isPrivateIpv4(ip) || AddressClassifier.isCgnat(ip)
 
-    /** 100.64.0.0/10 — shared address space used by CGNAT and some hotspots. */
-    fun isCarrierGradeNat(ip: String): Boolean {
-        val parts = ip.split('.')
-        if (parts.size != 4) return false
-        val first = parts[0].toIntOrNull() ?: return false
-        val second = parts[1].toIntOrNull() ?: return false
-        return first == 100 && second in 64..127
-    }
+    /** 100.64.0.0/10 — faixa compartilhada, validada antes da classificação. */
+    fun isCarrierGradeNat(ip: String): Boolean = AddressClassifier.isCgnat(ip)
 
     private val STUN_SERVERS = listOf(
         "stun.l.google.com:19302",
@@ -154,7 +143,10 @@ object Net {
      * the internet. Best effort: a failure simply means "could not check".
      */
     fun checkBedrockReachable(ip: String, port: Int, timeoutMs: Int = 7000): String {
-        val address = "$ip:$port"
+        if (!AddressClassifier.isPublicIpv4(ip) || port !in 1..65535) {
+            return "Endereço ou porta inválidos para teste externo: só um IPv4 público utilizável pode ser testado."
+        }
+        val address = AddressClassifier.formatHostPort(ip.trim(), port)
         val urls = listOf(
             "https://api.mcsrvstat.us/bedrock/3/$address",
             "https://api.mcsrvstat.us/bedrock/$address",

@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: build-apk-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   GRADLE_VERSION: "8.11.1"
@@ -27,117 +27,62 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout
+      - name: Checkout da revisão exata
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "stable"
+          go-version-file: server/go.mod
           cache: true
           cache-dependency-path: server/go.sum
 
-      - name: "Servidor: dependencias, vet e self-test"
-        working-directory: server
+      - name: Fonte limpa e versão única
         run: |
-          set -o pipefail
-          set +e
-          {
-            set -euo pipefail
-            go mod tidy
-            go vet ./...
-            go test ./...
-            go build -trimpath -o /tmp/mobosrv .
-            # Evidencias nominais das correcoes desta rodada (level.dat com tag
-            # extra, validacao de mundo, recorte de avatar).
-            go test -v -count=1 -run 'TestLevelDat|TestValidateWorld|TestAvatar|TestNbtSkip' .
-            /tmp/mobosrv -version
-          # O self-test sobe um servidor real, carrega um mundo gerado, faz um
-          # ping RakNet e desliga. Falha o build se qualquer parte quebrar.
-          # Descoberta LAN: o payload do "Unconnected Pong" (o que o cliente
-          # Bedrock le na aba LAN) e validado campo a campo, tanto na porta
-          # padrao quanto em uma porta personalizada.
-          # Padrao de entrega: NetherNet ligado, RakNet desligado. O self-test
-          # valida a sinalizacao HTTP e a coleta de candidatos ICE.
-          /tmp/mobosrv -selftest -port 19132
-          /tmp/mobosrv -selftest -port 19555
-          # Compatibilidade RakNet ligada: valida tambem o ping de descoberta.
-          /tmp/mobosrv -selftest -port 19134 -raknet
-          # Tunel: relay local + cliente + ping RakNet pela porta publica.
-          /tmp/mobosrv -selftest -port 19136 -raknet -selftest-tunnel
-          } 2>&1 | tee /tmp/go-check.log
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
-            # O log completo nao passa pelo proxy do ambiente de desenvolvimento,
-            # entao o erro vai como anotacao no resumo do job.
-            grep -nE "\.go:[0-9]+:|^--- FAIL|undefined|cannot|declared and not used|^FAIL" /tmp/go-check.log \
-              | head -25 | while IFS= read -r line; do
-                echo "::error title=Falha no Go::${line}"
-              done
-            echo "---- fim do log ----"
-            tail -40 /tmp/go-check.log
-            exit "$status"
-          fi
+          set -euo pipefail
+          git diff --quiet
+          git diff --cached --quiet
+          cat version.properties
+          grep -q '^versionName=1\.4\.4$' version.properties
+          grep -q '^versionCode=19$' version.properties
 
-      - name: "Registrar evidencias dos testes"
-        run: |
-          set -uo pipefail
-          mkdir -p docs
-          {
-            echo "MoboServer - evidencias automatizadas do ultimo build verde"
-            echo "Commit: ${GITHUB_SHA}"
-            echo "Data: $(date -u +%FT%TZ)"
-            echo
-            grep -E "^ok |selftest:|SELFTEST OK|Listener |Sinalizacao NetherNet|ICE (ok|falhou)|Interfaces repassadas|--- (PASS|FAIL)" /tmp/go-check.log 2>/dev/null || true
-
-          } > docs/test-evidence.txt
-          cat docs/test-evidence.txt
-
-      - name: "Servidor: compilar para Android arm64"
+      - name: "Servidor: vet, testes e self-tests"
         working-directory: server
         run: |
           set -euo pipefail
-          OUT=../android/app/src/main/jniLibs/arm64-v8a
-          mkdir -p "$OUT"
-          # GOOS=android e obrigatorio: um PIE compilado para linux pede o
-          # loader do glibc (/lib/ld-linux-aarch64.so.1), que nao existe no
-          # Android, e o exec falha com "error=2, No such file or directory".
-          if ! CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-            go build -buildmode=pie -trimpath -ldflags="-s -w" -o "$OUT/libmobosrv.so" . \
-            > /tmp/go-arm64.log 2>&1; then
-            echo "=== falha ao compilar para arm64 ==="
-            cat /tmp/go-arm64.log
-            mkdir -p ../.ci-logs && cp /tmp/go-arm64.log ../.ci-logs/go-arm64.log
-            git -C .. add -f .ci-logs/go-arm64.log
-            git -C .. -c user.name="github-actions[bot]" \
-              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              commit -m "ci: log do build arm64 [skip ci]" || true
-            git -C .. push || true
-            exit 1
-          fi
-          # PIE linux aponta para o loader do glibc (inexistente no Android) e
-          # tem TLS com alinhamento 8 (Bionic exige 64). Ver
-          # scripts/patch-android-elf.py.
-          python3 ../scripts/patch-android-elf.py "$OUT/libmobosrv.so"
-          ls -lh "$OUT/libmobosrv.so"
-          file "$OUT/libmobosrv.so"
+          go vet ./...
+          go test ./... -count=1 | tee /tmp/go-test.log
+          go test -v -count=1 -run 'TestGeneration|TestLevelDat|TestValidateWorld|TestAvatar|TestSkinExport|TestNbtSkip|TestTransportSummary|TestClampViewDistance' . | tee /tmp/go-evidence.log
+          python3 ../scripts/build-server.py ../build/mobosrv --host
+          ../build/mobosrv -version | tee /tmp/go-version.txt
+          ../build/mobosrv -selftest -port 19132
+          ../build/mobosrv -selftest -port 19555
+          ../build/mobosrv -selftest -port 19134 -raknet
+          ../build/mobosrv -selftest -port 19136 -raknet -selftest-tunnel
 
-      - name: "Servidor: validar o ELF para Android"
+      - name: "Servidor: compilar ARM64 da mesma revisão"
+        run: |
+          set -euo pipefail
+          rm -f android/app/src/main/jniLibs/arm64-v8a/libmobosrv.so
+          python3 scripts/build-server.py android/app/src/main/jniLibs/arm64-v8a/libmobosrv.so
+          file android/app/src/main/jniLibs/arm64-v8a/libmobosrv.so
+          sha256sum android/app/src/main/jniLibs/arm64-v8a/libmobosrv.so | tee /tmp/server-sha256.txt
+
+      - name: "Servidor: validar ELF Android"
         run: |
           set -euo pipefail
           SO=android/app/src/main/jniLibs/arm64-v8a/libmobosrv.so
           python3 - "$SO" <<'PY'
           import struct, sys
-          path = sys.argv[1]
-          data = open(path, "rb").read()
+          data = open(sys.argv[1], "rb").read()
           e_type, = struct.unpack_from("<H", data, 16)
           e_machine, = struct.unpack_from("<H", data, 18)
           e_phoff, = struct.unpack_from("<Q", data, 32)
           e_phentsize, e_phnum = struct.unpack_from("<HH", data, 54)
-          interp = None
-          dyn = None
+          interp = None; needed = []; tls_align = None
           for i in range(e_phnum):
               off = e_phoff + i * e_phentsize
               p_type, = struct.unpack_from("<I", data, off)
@@ -145,35 +90,22 @@ jobs:
               p_filesz, = struct.unpack_from("<Q", data, off + 32)
               if p_type == 3:
                   interp = data[p_offset:p_offset + p_filesz].split(b"\0")[0].decode()
-              if p_type == 2:
-                  dyn = (p_offset, p_filesz)
-          needed = []
-          if dyn:
-              o, size = dyn
-              for j in range(o, o + size, 16):
-                  tag, val = struct.unpack_from("<qQ", data, j)
-                  if tag == 0:
-                      break
-                  if tag == 1:
-                      needed.append(val)
-          print("e_type", e_type, "machine", e_machine, "interp", interp, "needed", len(needed))
-          if e_type != 3 or e_machine != 183:
-              sys.exit("ELF nao e um PIE aarch64")
-          if interp != "/system/bin/linker64":
-              sys.exit(f"interpretador errado: {interp!r} (esperado /system/bin/linker64)")
-          tls_align = None
-          for i in range(e_phnum):
-              off = e_phoff + i * e_phentsize
-              p_type, = struct.unpack_from("<I", data, off)
               if p_type == 7:
                   tls_align, = struct.unpack_from("<Q", data, off + 48)
-          if needed:
-              sys.exit("binario com dependencias dinamicas: nao roda em Android sem essas libs")
-          if tls_align is not None and tls_align < 64:
-              sys.exit(f"PT_TLS com alinhamento {tls_align}: Bionic exige >= 64")
-          print("ELF ok: PIE aarch64, /system/bin/linker64, TLS", tls_align, "sem dependencias")
+              if p_type == 2:
+                  for j in range(p_offset, p_offset + p_filesz, 16):
+                      tag, val = struct.unpack_from("<qQ", data, j)
+                      if tag == 0: break
+                      if tag == 1: needed.append(val)
+          if e_type != 3 or e_machine != 183: sys.exit("ELF não é PIE aarch64")
+          if interp != "/system/bin/linker64": sys.exit(f"interpretador errado: {interp!r}")
+          if needed: sys.exit("binário com dependências dinâmicas")
+          if tls_align is not None and tls_align < 64: sys.exit(f"PT_TLS alinhamento {tls_align} < 64")
+          print("ELF ok: PIE aarch64, linker64, TLS", tls_align)
           PY
-          echo "ELF ok"
+          REVISION="$(git rev-parse HEAD)"
+          grep -a -q "$REVISION" "$SO"
+          echo "Revisão presente no binário: $REVISION"
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -185,115 +117,137 @@ jobs:
         run: |
           set -euo pipefail
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-          if [ -z "$SDK" ]; then
-            echo "::error::Android SDK nao encontrado no runner"
-            exit 1
-          fi
+          test -n "$SDK"
           SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
-          if [ ! -x "$SDKMANAGER" ]; then
-            SDKMANAGER="$(command -v sdkmanager || true)"
-          fi
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager || true)"; fi
           if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
             yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-            "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" >/dev/null 2>&1 || true
+            "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" >/dev/null
           fi
-          ls "$SDK/platforms"
+          test -d "$SDK/platforms/android-35"
+          test -x "$SDK/build-tools/35.0.0/apksigner"
+          test -x "$SDK/build-tools/35.0.0/aapt"
 
       - name: Instalar Gradle ${{ env.GRADLE_VERSION }}
         run: |
           set -euo pipefail
-          curl -fsSL -o /tmp/gradle.zip \
-            "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
+          curl -fsSL -o /tmp/gradle.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
           unzip -q /tmp/gradle.zip -d "$HOME/gradle-dist"
           echo "$HOME/gradle-dist/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
 
-      # Testes de JVM da logica de selecao de mundo / mesclagem de configuracao.
-      # Nao precisa de aparelho e falha o build quando o ID selecionado deixa de
-      # chegar ao inicio ou quando Ajustes volta a sobrescrever a selecao.
-      - name: Testes de logica do app (JVM)
+      - name: Testes de lógica do app (JVM)
         working-directory: android
         run: |
-          set -o pipefail
-          gradle --no-daemon testReleaseUnitTest 2>&1 | tee /tmp/gradle-unit.log
+          set -euo pipefail
+          gradle --no-daemon testReleaseUnitTest | tee /tmp/gradle-unit.log
           {
-            echo
-            echo "== Testes de JVM do app (selecao de mundo / mesclagem de configuracao) =="
+            echo "== Testes JVM do app =="
             for xml in app/build/test-results/testReleaseUnitTest/*.xml; do
               [ -f "$xml" ] || continue
               sed -nE 's/.*<testsuite name="([^"]+)" tests="([0-9]+)" skipped="([0-9]+)" failures="([0-9]+)" errors="([0-9]+)".*/\1: \2 teste(s), \4 falha(s), \5 erro(s)/p' "$xml"
-              grep -oE 'testcase name="[^"]+"' "$xml" | sed -E 's/testcase name="([^"]+)"/  - \1/' || true
             done
-          } | tee -a ../docs/test-evidence.txt
+          } | tee /tmp/jvm-evidence.txt
 
-      # DemoActivity vive apenas em src/debug (não entra no APK). Compilar a
-      # variante debug aqui evita que ela apodreça sem ninguém notar.
-      - name: Compilar Kotlin da variante debug (demo de interface)
-        continue-on-error: true
+      - name: Compilar Kotlin debug (demo de interface)
         working-directory: android
-        run: gradle --no-daemon compileDebugKotlin 2>&1 | tail -40
+        run: gradle --no-daemon compileDebugKotlin
 
       - name: Compilar APK release
         working-directory: android
         run: |
-          set -o pipefail
-          gradle --no-daemon --stacktrace assembleRelease 2>&1 | tee /tmp/gradle.log
+          set -euo pipefail
+          gradle --no-daemon --stacktrace assembleRelease | tee /tmp/gradle.log
 
-      - name: Diagnostico do build
-        if: failure()
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          mkdir -p .ci-logs
-          if [ -f /tmp/go-check.log ]; then
-            cp /tmp/go-check.log .ci-logs/go-check.log
-          fi
-          if [ -f /tmp/gradle-unit.log ]; then
-            cp /tmp/gradle-unit.log .ci-logs/gradle-unit.log
-          fi
-          if [ -f /tmp/gradle.log ]; then
-            tail -c 200000 /tmp/gradle.log > .ci-logs/gradle.log
-            grep -nE "e: file|error:|FAILURE|What went wrong|Caused by|Execution failed" .ci-logs/gradle.log | head -40 || true
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f .ci-logs/ || true
-          git commit -m "ci: diagnostico do build [skip ci]" || true
-          git pull --rebase --autostash origin "$GITHUB_REF_NAME" || true
-          git push origin "HEAD:$GITHUB_REF_NAME" || true
-
-      - name: Verificar APK
+      - name: Verificar APK (assinatura, package, versão, ARM64, revisão)
+        id: verify
         run: |
           set -euo pipefail
           APK=android/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
-          ls -lh "$APK"
           SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
-          APKSIGNER="$(ls -d "$SDK"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)"
-          if [ -n "$APKSIGNER" ]; then
-            "$APKSIGNER" verify --print-certs "$APK"
-          else
-            echo "::warning::apksigner nao encontrado, pulando verificacao de assinatura"
-          fi
+          BT="$SDK/build-tools/35.0.0"
+          "$BT/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BT/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "package: name='com.moboserver.app'" /tmp/badging.txt
+          grep -q "versionName='1.4.4'" /tmp/badging.txt
+          grep -q "versionCode='19'" /tmp/badging.txt
+          grep -q "native-code: 'arm64-v8a'" /tmp/badging.txt
           unzip -l "$APK" | grep -q "lib/arm64-v8a/libmobosrv.so"
-          echo "APK contem o servidor embutido."
+          mkdir -p /tmp/apk-lib
+          unzip -p "$APK" lib/arm64-v8a/libmobosrv.so > /tmp/apk-lib/libmobosrv.so
+          BUILT_SHA="$(sha256sum android/app/src/main/jniLibs/arm64-v8a/libmobosrv.so | cut -d' ' -f1)"
+          APK_SHA="$(sha256sum /tmp/apk-lib/libmobosrv.so | cut -d' ' -f1)"
+          test "$BUILT_SHA" = "$APK_SHA"
+          REVISION="$(git rev-parse HEAD)"
+          grep -a -q "$REVISION" /tmp/apk-lib/libmobosrv.so
+          # Mesma chave de assinatura da entrega anterior (não trocar identidade).
+          OLDZIP=releases_apk/MoboServer-v1.4.3-android-arm64.zip
+          if [ -f "$OLDZIP" ]; then
+            mkdir -p /tmp/old-apk
+            unzip -p "$OLDZIP" MoboServer-v1.4.3.apk > /tmp/old-apk/old.apk
+            "$BT/apksigner" verify --print-certs /tmp/old-apk/old.apk > /tmp/old-certs.txt
+            NEW_DIGEST="$(grep -i 'certificate SHA-256 digest' /tmp/apksigner.txt | head -1 | awk '{print $NF}')"
+            OLD_DIGEST="$(grep -i 'certificate SHA-256 digest' /tmp/old-certs.txt | head -1 | awk '{print $NF}')"
+            test -n "$NEW_DIGEST"
+            test "$NEW_DIGEST" = "$OLD_DIGEST"
+            echo "Assinatura preservada: $NEW_DIGEST"
+          fi
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+          echo "server_sha=$APK_SHA" >> "$GITHUB_OUTPUT"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
 
-      - name: Empacotar ZIP da release
+      - name: Empacotar ZIP novo (sem sobrescrever publicação anterior)
         id: package
         run: |
           set -euo pipefail
-          VERSION="$(grep -m1 'versionName = ' android/app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')"
+          VERSION="$(sed -n 's/^versionName=//p' version.properties)"
+          CODE="$(sed -n 's/^versionCode=//p' version.properties)"
           NAME="MoboServer-v${VERSION}-android-arm64"
+          ZIP="releases_apk/${NAME}.zip"
+          REVISION="$(git rev-parse HEAD)"
+          APK_SHA="$(sha256sum android/app/build/outputs/apk/release/app-release.apk | cut -d' ' -f1)"
+          SERVER_SHA="$(sha256sum android/app/src/main/jniLibs/arm64-v8a/libmobosrv.so | cut -d' ' -f1)"
+          SOURCE_HASH="$(grep -a -o 'source [0-9a-f]\{64\}' /tmp/go-version.txt | head -1 | cut -d' ' -f2 || true)"
           WORK="$(mktemp -d)"
           cp android/app/build/outputs/apk/release/app-release.apk "$WORK/MoboServer-v${VERSION}.apk"
           cp dist/LEIA-ME.txt "$WORK/LEIA-ME.txt"
+          cp docs/relatorio-1.4.4.md "$WORK/MUDANCAS-E-LIMITACOES.md"
           cp LICENSE "$WORK/LICENSE"
+          {
+            echo "MoboServer $VERSION (code $CODE) — Android ARM64"
+            echo "Commit compilado: $REVISION"
+            echo "Branch: $GITHUB_REF_NAME"
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "SHA-256 APK: $APK_SHA"
+            echo "SHA-256 libmobosrv.so: $SERVER_SHA"
+            echo "Hash de fonte do servidor: ${SOURCE_HASH:-ver -version no diagnóstico}"
+            echo "Assinatura: mesma chave da linha 1.4.x; applicationId com.moboserver.app"
+            echo "Testes: Go vet/test/selftests + JVM + assembleRelease + apksigner/aapt"
+            echo "Não houve teste em aparelho físico nem cliente Minecraft nesta execução."
+          } > "$WORK/BUILD-INFO.txt"
+          printf '%s  MoboServer-v%s.apk\n' "$APK_SHA" "$VERSION" > "$WORK/SHA256SUMS.txt"
           mkdir -p releases_apk
-          rm -f "releases_apk/${NAME}.zip"
-          (cd "$WORK" && zip -q -r "$GITHUB_WORKSPACE/releases_apk/${NAME}.zip" .)
-          unzip -l "releases_apk/${NAME}.zip"
-          echo "zip=releases_apk/${NAME}.zip" >> "$GITHUB_OUTPUT"
-          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          (cd "$WORK" && zip -q -r "$GITHUB_WORKSPACE/$ZIP" .)
+          unzip -t "$ZIP"
+          if git cat-file -e "HEAD:$ZIP" 2>/dev/null; then
+            EXISTING_SHA="$(git show "HEAD:$ZIP" | sha256sum | cut -d' ' -f1)"
+            NEW_SHA="$(sha256sum "$ZIP" | cut -d' ' -f1)"
+            if [ "$EXISTING_SHA" != "$NEW_SHA" ]; then
+              echo "::error::$ZIP já existe com outro conteúdo. Não sobrescreva: bumps de versão/revisão são obrigatórios."
+              exit 1
+            fi
+            echo "ZIP idêntico já publicado; nada a commitar."
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+          fi
+          ZIP_SHA="$(sha256sum "$ZIP" | cut -d' ' -f1)"
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "zip_sha=$ZIP_SHA" >> "$GITHUB_OUTPUT"
+          echo "apk_sha=$APK_SHA" >> "$GITHUB_OUTPUT"
+          unzip -l "$ZIP"
 
       - name: Enviar artefato
         uses: actions/upload-artifact@v4
@@ -303,31 +257,20 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publicar ZIP em releases_apk
-        continue-on-error: true
+      - name: Publicar ZIP em releases_apk (falha se não publicar)
+        if: steps.package.outputs.already_published != 'true'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "$GITHUB_REF_NAME"
+          REMOTE="$(git rev-parse "origin/$GITHUB_REF_NAME")"
+          if [ "$REMOTE" != "$GITHUB_SHA" ]; then
+            echo "::error::A branch avançou durante o build ($REMOTE != $GITHUB_SHA). Não aplique binário sobre outro código."
+            exit 1
+          fi
           git add -f "${{ steps.package.outputs.zip }}"
-          # Mantem o sha256 do README igual ao ZIP publicado; sem isso, um rebuild
-          # sem bump de versao deixa o hash documentado errado.
-          SHA="$(sha256sum "${{ steps.package.outputs.zip }}" | cut -d' ' -f1)"
-          if grep -q "releases_apk/${{ steps.package.outputs.name }}.zip" README.md; then
-            sed -i -E "/releases_apk\/${{ steps.package.outputs.name }}\.zip/ s/\`[0-9a-f]{64}\`/\`${SHA}\`/" README.md
-            echo "sha256 do README: $SHA"
-            grep -n "releases_apk/${{ steps.package.outputs.name }}.zip" README.md | head -2
-          fi
-          git add -f README.md || true
-          git add -f dist/LEIA-ME.txt || true
-          git add -f docs/test-evidence.txt || true
-          git add -f server/go.sum 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "Nada novo para publicar."
-            exit 0
-          fi
           git commit -m "build: ${{ steps.package.outputs.name }} [skip ci]"
-          git pull --rebase --autostash origin "$GITHUB_REF_NAME" || true
           git push origin "HEAD:$GITHUB_REF_NAME"
 
       - name: Resumo
@@ -336,6 +279,9 @@ jobs:
           {
             echo "### Build do MoboServer"
             echo ""
-            echo "- Zip: \`${{ steps.package.outputs.zip }}\`"
-            echo "- Versao: \`${{ steps.package.outputs.version }}\`"
+            echo "- Versão: \`${{ steps.package.outputs.version }}\`"
+            echo "- ZIP: \`${{ steps.package.outputs.zip }}\`"
+            echo "- SHA-256 ZIP: \`${{ steps.package.outputs.zip_sha }}\`"
+            echo "- SHA-256 APK: \`${{ steps.package.outputs.apk_sha }}\`"
+            echo "- Commit: \`${{ github.sha }}\`"
           } >> "$GITHUB_STEP_SUMMARY"

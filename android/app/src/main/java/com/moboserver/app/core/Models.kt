@@ -46,6 +46,7 @@ enum class AvatarState {
  * pixels, geometria resolvida e resultado da renderização.
  */
 data class AvatarInfo(
+    val code: String = "",
     val persona: Boolean = false,
     val textureWidth: Int = 0,
     val textureHeight: Int = 0,
@@ -54,7 +55,41 @@ data class AvatarInfo(
     val geometry: String = "",
     val headCube: Boolean = false,
     val rendered: Boolean = false,
+    val formatVersion: String = "",
+    val selectedBy: String = "",
+    val boneCount: Int = 0,
+    val cubeCount: Int = 0,
+    val headBone: Boolean = false,
+    val headCubes: Int = 0,
+    val descendantCubes: Int = 0,
+    val uvMode: String = "",
+    val uvOutside: Boolean = false,
+    val mesh: Boolean = false,
+    val layout: String = "",
+    val reason: String = "",
 ) {
+    fun shortReason(): String = when (code) {
+        "ok" -> ""
+        "texture_dimensions" -> "dimensões de skin inesperadas"
+        "texture_size" -> "tamanho de textura inconsistente"
+        "model_too_large" -> "modelo grande demais"
+        "model_parse" -> "modelo não é JSON válido"
+        "model_limits" -> "modelo excede limites"
+        "geometry_selection" -> "geometria ambígua"
+        "head_bone_missing" -> "osso head ausente"
+        "head_without_cubes" -> "head sem cubos diretos"
+        "head_in_descendant" -> "cabeça em descendentes"
+        "head_multiple_cubes" -> "vários cubos base na cabeça"
+        "head_overlay_only" -> "só camada externa na cabeça"
+        "uv_per_face_missing" -> "UV por face sem north/front"
+        "uv_out_of_texture" -> "UV fora da textura"
+        "uv_invalid" -> "UV inválido"
+        "unsupported_mesh" -> "malha não suportada"
+        "unsupported_layout" -> "layout de textura não suportado"
+        "persona_model_missing" -> "Persona sem JSON de geometria"
+        "png_encode_failed" -> "falha ao gerar PNG"
+        else -> reason.ifBlank { "skin não suportada" }.take(80)
+    }
     fun summary(): String = listOfNotNull(
         if (textureWidth > 0) "${textureWidth}x$textureHeight" else null,
         if (pixelBytes > 0) "$pixelBytes B de pixel" else null,
@@ -62,6 +97,14 @@ data class AvatarInfo(
         geometry.takeIf { it.isNotBlank() },
         "Persona".takeIf { persona },
         "cubo de cabeça".takeIf { headCube },
+        formatVersion.takeIf { it.isNotBlank() }?.let { "formato $it" },
+        selectedBy.takeIf { it.isNotBlank() }?.let { "seleção $it" },
+        "ossos $boneCount / cubos $cubeCount".takeIf { boneCount > 0 || cubeCount > 0 },
+        "head: $headCubes cubo(s), $descendantCubes descendente(s)".takeIf { headBone },
+        uvMode.takeIf { it.isNotBlank() }?.let { "UV $it" },
+        "UV fora da textura".takeIf { uvOutside },
+        "malha livre".takeIf { mesh },
+        code.takeIf { it.isNotBlank() && it != "ok" }?.let { "código $it" },
     ).joinToString(" • ")
 }
 
@@ -143,6 +186,13 @@ data class ServerInfo(
     val iceHosts: List<String> = emptyList(),
     val iceInterfaceCount: Int = 0,
     val iceError: String = "",
+    val generator: String = "",
+    val origin: String = "",
+    val generationEngine: String = "",
+    val generationVersion: String = "",
+    val appVersion: String = "",
+    val revision: String = "",
+    val sourceHash: String = "",
 )
 
 /**
@@ -164,6 +214,8 @@ data class Exposure(
     val externalCheck: String? = null,
     /** null = never checked, true = reached from outside, false = not reached. */
     val externalVerified: Boolean? = null,
+    /** Alvo exato do teste externo; IP observado/UPnP não herdam confirmação. */
+    val externalVerifiedIp: String? = null,
     /** Tunnel state reported by the server: connecting, connected, reconnecting. */
     val tunnelState: String? = null,
     /** "host:porta" handed out by the relay, when connected. */
@@ -171,6 +223,9 @@ data class Exposure(
 )
 
 /** Everything the UI renders, published by [ServerController]. */
+/** Resultado de exportação explícita de skin (somente textura/modelo/diagnóstico). */
+data class SkinExportReady(val uri: String, val message: String, val ok: Boolean)
+
 data class RuntimeState(
     val status: ServerStatus = ServerStatus.STOPPED,
     val players: List<PlayerInfo> = emptyList(),

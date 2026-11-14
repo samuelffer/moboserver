@@ -7,7 +7,7 @@ JNI_DIR := $(ANDROID_DIR)/app/src/main/jniLibs/arm64-v8a
 
 ## Compila o servidor para o host (usado no self-test)
 server:
-	cd server && $(GO) build -trimpath -o ../build/mobosrv .
+	python3 scripts/build-server.py build/mobosrv --host
 
 ## Roda o self-test do servidor (sobe um servidor real e faz ping)
 test: server
@@ -15,10 +15,7 @@ test: server
 
 ## Compila o servidor para Android arm64 dentro do projeto Android
 server-arm64:
-	mkdir -p $(JNI_DIR)
-	cd server && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -buildmode=pie \
-		-trimpath -ldflags="-s -w" -o ../$(JNI_DIR)/libmobosrv.so .
-	python3 scripts/patch-android-elf.py $(JNI_DIR)/libmobosrv.so
+	python3 scripts/build-server.py $(JNI_DIR)/libmobosrv.so
 
 ## Gera o APK release
 apk: server-arm64

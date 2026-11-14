@@ -24,6 +24,8 @@ import com.moboserver.app.core.ServerConfig
 import com.moboserver.app.core.ServerController
 import com.moboserver.app.core.ServerService
 import com.moboserver.app.core.ServerStatus
+import com.moboserver.app.core.VIEW_DISTANCE_MIN
+import com.moboserver.app.core.VIEW_DISTANCE_MAX
 import com.moboserver.app.core.Store
 import com.moboserver.app.core.WorldInfo
 import com.moboserver.app.core.WorldRepository
@@ -66,6 +68,7 @@ sealed interface PanelDialog {
     data class Text(val title: String, val body: String) : PanelDialog
     /** Explica por que a cabeça de um jogador não aparece (ou mostra o resumo). */
     data class PlayerDetails(val id: String) : PanelDialog
+    data class RecoverPolicy(val id: String, val name: String) : PanelDialog
 }
 
 /** Ações que precisam da Activity (seletor de arquivos, compartilhar). */
@@ -73,13 +76,17 @@ sealed interface PanelEvent {
     data object OpenImportPicker : PanelEvent
     data class ShareText(val subject: String, val body: String) : PanelEvent
     data class ExportWorld(val id: String, val suggestedName: String) : PanelEvent
+    data class ExportSkin(val id: String, val suggestedName: String) : PanelEvent
 }
 
 /** Situação de rede mostrada na subpágina "Acesso pela internet". */
 data class InternetInfo(
     val lanAddress: String = "—",
+    val lanLabel: String = "Endereço na rede local",
     val wanAddress: String = "—",
+    val wanLabel: String = "WAN do roteador",
     val publicAddress: String = "—",
+    val publicLabel: String = "Observado por STUN",
     val routerNote: String = "",
     val externalStatus: String = "Não verificado",
     val externalDetail: String = "",
@@ -95,6 +102,7 @@ data class PanelExtras(
     val worlds: List<WorldInfo> = emptyList(),
     val gameMode: String = "survival",
     val difficulty: String = "normal",
+    val generator: String = "terrain",
     val authEnabled: Boolean = true,
     val allowOpenMode: Boolean = false,
     val autoForward: Boolean = true,
@@ -176,6 +184,9 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             Store.config.collect { rebuild() }
         }
+        viewModelScope.launch {
+            ServerController.skinExports.collect { showMessage(it.message) }
+        }
     }
 
     // ------------------------------------------------------------------ mapeamento
@@ -198,7 +209,8 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
                     AvatarState.FAILED -> AvatarStateUi.Failed
                     else -> AvatarStateUi.Loading
                 },
-                avatarReason = avatar?.reason.orEmpty(),
+                avatarReason = avatar?.info?.shortReason().orEmpty().ifBlank { avatar?.reason.orEmpty() },
+                avatarDetailReason = avatar?.reason.orEmpty(),
                 avatarInfo = avatar?.info?.summary().orEmpty(),
             )
         }
@@ -250,6 +262,7 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
             worlds = worldsInfo,
             gameMode = config.gameMode,
             difficulty = config.difficulty,
+            generator = config.generator,
             authEnabled = config.authEnabled,
             allowOpenMode = config.allowOpenMode,
             autoForward = config.autoForward,
@@ -285,6 +298,7 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
             publicIp = exposure.publicIp,
             port = port,
             verified = exposure.externalVerified,
+            verifiedIp = exposure.externalVerifiedIp,
         )
         return Address(local, choice.share, choice.kind, choice.status, choice.cgnat)
     }
@@ -349,15 +363,26 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
     private fun internetInfo(runtime: RuntimeState, address: Address): InternetInfo {
         val exposure = runtime.exposure
         val port = runtime.info?.port ?: Store.snapshot().port
+        val choice = AddressClassifier.classify(
+            lanIp = address.lanIp,
+            wanIp = exposure.wanIp,
+            publicIp = exposure.publicIp,
+            port = port,
+            verified = exposure.externalVerified,
+            verifiedIp = exposure.externalVerifiedIp,
+        )
         return InternetInfo(
-            lanAddress = (address.lanIp ?: "—") + ":" + port,
-            wanAddress = exposure.wanIp ?: "—",
-            publicAddress = exposure.publicIp ?: "—",
+            lanAddress = choice.lanAddress,
+            lanLabel = choice.lanLabel,
+            wanAddress = choice.wanAddress,
+            wanLabel = choice.wanLabel,
+            publicAddress = choice.publicAddress,
+            publicLabel = choice.publicLabel,
             routerNote = exposure.upnpMessage.orEmpty(),
-            externalStatus = when (exposure.externalVerified) {
-                true -> "Confirmado"
-                false -> "Não confirmado"
-                null -> "Não verificado"
+            externalStatus = when {
+                address.kind == "verificado" -> "Confirmado para o endereço divulgado"
+                exposure.externalVerified == false -> "Não confirmado"
+                else -> "Não verificado"
             },
             externalDetail = exposure.externalCheck.orEmpty(),
             tunnelState = exposure.tunnelState.orEmpty(),
@@ -667,7 +692,7 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         override fun setViewDistance(value: Int) {
-            Store.update { it.copy(viewDistance = value.coerceIn(4, 24)) }
+            Store.update { it.copy(viewDistance = value.coerceIn(VIEW_DISTANCE_MIN, VIEW_DISTANCE_MAX)) }
         }
 
         override fun gameSettings() {
@@ -768,9 +793,39 @@ class PanelViewModel(app: Application) : AndroidViewModel(app) {
         showMessage("Porta: $clamped (vale no próximo início)")
     }
 
-    fun saveGame(gameMode: String, difficulty: String) {
-        Store.update { it.copy(gameMode = gameMode, difficulty = difficulty) }
-        showMessage("Jogo: $gameMode • $difficulty")
+    fun saveGame(gameMode: String, difficulty: String, generator: String) {
+        val gen = if (generator == "flat") "flat" else "terrain"
+        Store.update { it.copy(gameMode = gameMode, difficulty = difficulty, generator = gen) }
+        showMessage("Jogo: $gameMode • $difficulty • gerador pedido: $gen (mundo existente mantém a política registrada)")
+    }
+
+    fun recoverPolicy(id: String, mode: String) {
+        if (ServerController.requestGenerationRecovery(id, mode)) {
+            showMessage(
+                if (mode == "reset") {
+                    "Recuperação armada: o registro corrompido será preservado e a política só será gravada se este mundo iniciar validado."
+                } else {
+                    "Adoção do registro antigo armada para este mundo. Só vale se você tem certeza de que ele pertence a este mundo."
+                },
+            )
+        } else {
+            showMessage("Não foi possível armar a recuperação. Pare o servidor e selecione um mundo existente.")
+        }
+    }
+
+    fun requestSkinExport(id: String) {
+        val player = ServerController.state.value.players.firstOrNull { it.key == id } ?: return
+        _events.tryEmit(PanelEvent.ExportSkin(id, safeFileName(player.name) + "-skin.zip"))
+    }
+
+    fun exportSkin(id: String, uri: Uri) {
+        val player = ServerController.state.value.players.firstOrNull { it.key == id }
+        if (player == null) {
+            showMessage("Jogador não está mais online.")
+            return
+        }
+        ServerController.requestAvatarExport(player.name, uri)
+        showMessage("Exportando skin de ${player.name}…")
     }
 
     /** Usado pela subpágina Avançado; cada chamada grava só os campos alterados. */

@@ -33,8 +33,9 @@ com as restrições dadas. O que dá para fazer sem enganar:
 
 1. Dizer na interface (Ajuda/Diagnóstico) que o mundo usa motor simplificado.
 2. Registrar por mundo qual motor gerou os chunks novos e **nunca** trocar em
-   silêncio (`server/generation.go`, registro `generation.json` na pasta de
-   dados, fora do mundo).
+   silêncio (`server/generation.go`, schema 2, `generation/worlds/<hash>.json`
+   na pasta de dados, fora do mundo; o `generation.json` global antigo só é
+   adotado por recuperação explícita para um mundo).
 3. Área pré-gerada como paliativo explícito e limitado — não resolve exploração
    ilimitada nem entidades.
 
@@ -42,9 +43,11 @@ com as restrições dadas. O que dá para fazer sem enganar:
 
 * O `.mcworld` importado é preservado pelo app (cópia de trabalho).
 * Backup consistente continua sendo feito com o servidor parado.
-* `generation.json` guarda `engine`, `overworld` (`terrain`/`flat`), se o mundo é
-  importado e a versão que gravou; pedir outro gerador apenas **avisa** e mantém
-  o registro anterior — sem regenerar chunks.
+* `generation/worlds/<hash-do-ID>.json` guarda `engine`, `overworld`
+  (`terrain`/`flat`), origem (`imported`/`created`/`unknown`) e a versão que
+  gravou. Pedir outro gerador apenas **avisa** e mantém o gerador efetivo
+  anterior — sem regenerar chunks. Registro inválido bloqueia; corrompido é
+  preservado e só segue com recuperação explícita.
 * Comentário de `generator.go` corrigido: mundos importados **recebem** chunks
   novos deste gerador.
 

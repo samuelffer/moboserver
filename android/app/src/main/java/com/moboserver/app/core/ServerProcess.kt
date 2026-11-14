@@ -33,6 +33,13 @@ sealed class ServerEvent {
         val iceError: String = "",
         val transports: List<String> = emptyList(),
         val signalingLatencyMs: Long = -1,
+        val generator: String = "",
+        val origin: String = "",
+        val generationEngine: String = "",
+        val generationVersion: String = "",
+        val appVersion: String = "",
+        val revision: String = "",
+        val sourceHash: String = "",
     ) : ServerEvent()
     data class Log(val level: String, val message: String) : ServerEvent()
     data class Lan(val targets: List<LanTarget>) : ServerEvent()
@@ -67,8 +74,17 @@ sealed class ServerEvent {
     /** Salvamento concluído e confirmado pelo servidor. */
     data class Saved(val at: Long) : ServerEvent()
     data object SaveFailed : ServerEvent()
-    data class Fatal(val message: String) : ServerEvent()
-    data object Stopped : ServerEvent()
+    data class Fatal(val message: String, val code: String = "") : ServerEvent()
+    data class Stopped(val saved: Boolean = true) : ServerEvent()
+    data class AvatarExport(
+        val id: String,
+        val name: String,
+        val ok: Boolean,
+        val texture: String,
+        val model: String,
+        val info: AvatarInfo,
+        val reason: String,
+    ) : ServerEvent()
     data class Exited(val code: Int) : ServerEvent()
 }
 
@@ -194,6 +210,13 @@ class ServerProcess(
                         } else {
                             -1L
                         },
+                        generator = obj.optString("gen"),
+                        origin = obj.optString("origin"),
+                        generationEngine = obj.optJSONObject("generation")?.optString("engine").orEmpty(),
+                        generationVersion = obj.optJSONObject("generation")?.optString("engine_version").orEmpty(),
+                        appVersion = obj.optString("appVersion"),
+                        revision = obj.optString("revision"),
+                        sourceHash = obj.optString("sourceHash"),
                     ),
                 )
             }
@@ -262,8 +285,19 @@ class ServerProcess(
             )
             "saved" -> listener(ServerEvent.Saved(obj.optLong("at")))
             "save_failed" -> listener(ServerEvent.SaveFailed)
-            "fatal" -> listener(ServerEvent.Fatal(obj.optString("msg")))
-            "stopped" -> listener(ServerEvent.Stopped)
+            "fatal" -> listener(ServerEvent.Fatal(obj.optString("msg"), obj.optString("code")))
+            "stopped" -> listener(ServerEvent.Stopped(obj.optBoolean("saved", true)))
+            "avatar_export" -> listener(
+                ServerEvent.AvatarExport(
+                    id = obj.optString("id"),
+                    name = obj.optString("name"),
+                    ok = obj.optBoolean("ok", false),
+                    texture = obj.optString("texture"),
+                    model = obj.optString("model"),
+                    info = readAvatarInfo(obj.optJSONObject("info")),
+                    reason = obj.optString("reason"),
+                ),
+            )
             else -> listener(ServerEvent.Log("debug", line))
         }
     }
@@ -271,6 +305,7 @@ class ServerProcess(
     private fun readAvatarInfo(obj: JSONObject?): AvatarInfo {
         if (obj == null) return AvatarInfo()
         return AvatarInfo(
+            code = obj.optString("code"),
             persona = obj.optBoolean("persona"),
             textureWidth = obj.optInt("tex_w"),
             textureHeight = obj.optInt("tex_h"),
@@ -279,6 +314,18 @@ class ServerProcess(
             geometry = obj.optString("geometry"),
             headCube = obj.optBoolean("head_cube"),
             rendered = obj.optBoolean("rendered"),
+            formatVersion = obj.optString("format_version"),
+            selectedBy = obj.optString("selected_by"),
+            boneCount = obj.optInt("bone_count"),
+            cubeCount = obj.optInt("cube_count"),
+            headBone = obj.optBoolean("head_bone"),
+            headCubes = obj.optInt("head_cubes"),
+            descendantCubes = obj.optInt("descendant_cubes"),
+            uvMode = obj.optString("uv_mode"),
+            uvOutside = obj.optBoolean("uv_outside"),
+            mesh = obj.optBoolean("mesh"),
+            layout = obj.optString("layout"),
+            reason = obj.optString("reason"),
         )
     }
 
