@@ -183,11 +183,11 @@ object AddressClassifier {
         return AddressChoice(
             share = share, kind = kind, status = status, cgnat = cgnat,
             lanAddress = if (lan != null && port in 1..65535) formatHostPort(lan, port) else "—",
-            lanLabel = if (lanTrim.isEmpty()) "Sem endereço local" else "LAN (${if (lan6 != null) ipv6Kind(lanTrim) else ipv4Kind(lanTrim)})",
+            lanLabel = if (lanTrim.isEmpty()) "Sem endereço local" else "LAN (${if (lan6 != null) "IPv6 " + ipv6Kind(lanTrim) else ipv4Kind(lanTrim)})",
             wanAddress = if (wanTrim.isEmpty()) "—" else wanTrim,
-            wanLabel = if (wanTrim.isEmpty()) "Sem endereço WAN informado" else "WAN do roteador (${if (looksLikeIpv6(wanTrim)) ipv6Kind(wanTrim) else ipv4Kind(wanTrim)})",
+            wanLabel = if (wanTrim.isEmpty()) "Sem endereço WAN informado" else "WAN do roteador (${if (looksLikeIpv6(wanTrim)) "IPv6 " + ipv6Kind(wanTrim) else ipv4Kind(wanTrim)})",
             publicAddress = if (publicTrim.isEmpty()) "—" else publicTrim,
-            publicLabel = if (publicTrim.isEmpty()) "Sem endereço observado" else "Observado por STUN (${if (looksLikeIpv6(publicTrim)) ipv6Kind(publicTrim) else ipv4Kind(publicTrim)})",
+            publicLabel = if (publicTrim.isEmpty()) "Sem endereço observado" else "Observado por STUN (${if (looksLikeIpv6(publicTrim)) "IPv6 " + ipv6Kind(publicTrim) else ipv4Kind(publicTrim)})",
         )
     }
 }
