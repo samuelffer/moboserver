@@ -199,7 +199,7 @@ fun MoboPanel(
     }
     MoboUiTheme(dark) {
             Column(Modifier.fillMaxSize().background(C.bg).safeDrawingPadding().imePadding()) {
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
                     Spacer(Modifier.height(20.dp))
                     // Fade + deslocamento discreto (6 dp) entre abas; a duração
                     // respeita a escala de animação do sistema (0 = sem animação).
@@ -287,7 +287,7 @@ fun MoboUiTheme(dark: Boolean, content: @Composable () -> Unit) {
 }
 
 @Composable private fun Group(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Column(modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(C.card).padding(horizontal = 16.dp, vertical = 6.dp), content = content)
+    Column(modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(C.card).padding(horizontal = 16.dp, vertical = 6.dp), content = content)
 }
 
 @Composable private fun Gap() { Spacer(Modifier.height(16.dp)) }
@@ -313,7 +313,7 @@ fun MoboUiTheme(dark: Boolean, content: @Composable () -> Unit) {
         onClick = onClick,
         enabled = enabled,
         shape = RoundedCornerShape(14.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF126A34), contentColor = Color.White),
+        colors = ButtonDefaults.buttonColors(containerColor = C.green, contentColor = Color.White),
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
     ) { Text(label, fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
 }
